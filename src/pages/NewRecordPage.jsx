@@ -1,0 +1,694 @@
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabase/client'
+import { useAuth } from '../context/AuthContext'
+import { 
+  ArrowLeft, 
+  Save, 
+  Clock, 
+  DollarSign, 
+  FileText,
+  User,
+  UserPlus,
+  X,
+  Calculator,
+  Calendar,
+  Loader2,
+  CheckCircle2
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { isAdmin, isRep } from '../utils/roleHelpers'
+
+export const NewRecordPage = () => {
+  const { profile } = useAuth()
+  const navigate = useNavigate()
+
+  // Loading States
+  const [loadingEmployees, setLoadingEmployees] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [employees, setEmployees] = useState([])
+
+  // Form Fields State
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([])
+  const [employeeSearchText, setEmployeeSearchText] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [timeIn, setTimeIn] = useState('08:00')
+  const [timeOut, setTimeOut] = useState('17:00')
+  const [hourlyRate, setHourlyRate] = useState('25.00')
+  const [rateMultiplier, setRateMultiplier] = useState('1.5')
+  const [description, setDescription] = useState('')
+  const [reason, setReason] = useState('Holiday')
+  const [otherReason, setOtherReason] = useState('')
+
+  // Quick Add Employee Modal State
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [departments, setDepartments] = useState([])
+  const [qaFullName, setQaFullName] = useState('')
+  const [qaStaffId, setQaStaffId] = useState('')
+  const [qaCategory, setQaCategory] = useState('Shift')
+  const [qaDepartmentId, setQaDepartmentId] = useState('')
+  const [qaSaving, setQaSaving] = useState(false)
+
+  // Computed Live Fields
+  const [liveHours, setLiveHours] = useState(0)
+  const [livePayout, setLivePayout] = useState(0)
+
+  // Fetch active employees lists based on Role
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      if (!profile) return
+      setLoadingEmployees(true)
+      try {
+        let query = supabase
+          .from('profiles')
+          .select(`
+            id,
+            full_name,
+            staff_id,
+            category,
+            department_id,
+            departments (
+              name
+            )
+          `)
+          .eq('is_active', true)
+          .eq('role', 'employee')
+          .order('full_name')
+
+        // Reps can only capture for colleagues in their own department
+        if (isRep(profile)) {
+          query = query.eq('department_id', profile.department_id)
+        }
+
+        const { data, error } = await query
+        if (error) throw error
+        setEmployees(data || [])
+        
+        // Auto-select logged-in user if they are in the returned list
+        const me = data?.find(emp => emp.id === profile.id)
+        if (me) {
+          setSelectedEmployeeIds([me.id])
+        }
+      } catch (err) {
+        console.error("Error loading employees list:", err.message)
+        toast.error("Failed to load employee list.")
+      } finally {
+        setLoadingEmployees(false)
+      }
+    }
+    fetchEmployees()
+    return fetchEmployees // expose for refresh
+  }, [profile])
+
+  // Fetch departments for quick-add modal
+  useEffect(() => {
+    supabase.from('departments').select('*').order('name').then(({ data }) => {
+      setDepartments(data || [])
+      if (data?.length > 0) setQaDepartmentId(data[0].id)
+    })
+  }, [])
+
+  // Re-fetch employees and auto-select the newly added one
+  const refreshAndSelect = async (newEmployeeId) => {
+    try {
+      let query = supabase
+        .from('profiles')
+        .select(`id, full_name, staff_id, category, department_id, departments(name)`)
+        .eq('is_active', true)
+        .eq('role', 'employee')
+        .order('full_name')
+      if (isRep(profile)) {
+        query = query.eq('department_id', profile.department_id)
+      }
+      const { data } = await query
+      setEmployees(data || [])
+      if (newEmployeeId) {
+        setSelectedEmployeeIds(prev => [...new Set([...prev, newEmployeeId])])
+      }
+    } catch (err) {
+      console.error('Refresh failed:', err.message)
+    }
+  }
+
+  // Handle quick-add employee form submission
+  const handleQuickAdd = async (e) => {
+    e.preventDefault()
+    if (!qaFullName.trim() || !qaStaffId.trim()) {
+      toast.error('Please fill in all required fields.')
+      return
+    }
+    setQaSaving(true)
+    try {
+      const newId = `user-rep-${Math.random().toString(36).substr(2, 9)}`
+      const dummyEmail = `temp-${newId}@cbi-overtime.local`
+      const { error } = await supabase.from('profiles').insert({
+        id: newId,
+        email: dummyEmail,
+        password: 'TemporaryPassword123!',
+        full_name: qaFullName.trim(),
+        staff_id: qaStaffId.trim(),
+        category: qaCategory,
+        role: 'employee',
+        department_id: qaDepartmentId || profile.department_id,
+        is_active: true
+      })
+      if (error) throw error
+
+      toast.success(`${qaFullName} added and selected!`, { icon: <CheckCircle2 className="text-[#006939]" /> })
+      setQuickAddOpen(false)
+      // Reset modal fields
+      setQaFullName(''); setQaStaffId('')
+      setQaCategory('Shift')
+      // Refresh list and auto-select new employee
+      await refreshAndSelect(newId)
+    } catch (err) {
+      console.error('Quick add failed:', err.message)
+      toast.error(err.message || 'Failed to add employee.')
+    } finally {
+      setQaSaving(false)
+    }
+  }
+
+  // Live hours & payout calculator
+  useEffect(() => {
+    if (!timeIn || !timeOut) {
+      setLiveHours(0)
+      setLivePayout(0)
+      return
+    }
+
+    const [inHours, inMins] = timeIn.split(':').map(Number)
+    const [outHours, outMins] = timeOut.split(':').map(Number)
+
+    let inMinutes = inHours * 60 + inMins
+    let outMinutes = outHours * 60 + outMins
+
+    // Standard Overnight Shift logic (adds 24 hours if out < in)
+    if (outMinutes < inMinutes) {
+      outMinutes += 24 * 60
+    }
+
+    const elapsedMins = outMinutes - inMinutes
+    const calculatedHours = Number((elapsedMins / 60).toFixed(2))
+    
+    setLiveHours(calculatedHours)
+
+    const rate = Number(hourlyRate) || 0
+    const mult = Number(rateMultiplier) || 0
+    const payout = calculatedHours * rate * mult
+    setLivePayout(Number(payout.toFixed(2)))
+  }, [timeIn, timeOut, hourlyRate, rateMultiplier])
+
+  // Filter employees based on search text
+  const filteredEmployees = employees.filter(emp => {
+    const search = employeeSearchText.toLowerCase().trim()
+    if (!search) return true
+    
+    const nameMatch = emp.full_name?.toLowerCase().includes(search)
+    const staffIdMatch = emp.staff_id?.toLowerCase().includes(search)
+    const deptMatch = emp.departments?.name?.toLowerCase().includes(search)
+    const catMatch = emp.category?.toLowerCase().includes(search)
+    
+    return nameMatch || staffIdMatch || deptMatch || catMatch
+  })
+
+  // Handle Form Submission
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    if (selectedEmployeeIds.length === 0) {
+      toast.error("Please select at least one employee.")
+      return
+    }
+    if (liveHours <= 0) {
+      toast.error("Invalid overtime duration: Hours must be greater than zero.")
+      return
+    }
+    if (!description.trim()) {
+      toast.error("Please provide a task description.")
+      return
+    }
+    if (reason === 'Others' && !otherReason.trim()) {
+      toast.error("Please specify your reason for overtime.")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+        const rows = selectedEmployeeIds.map(empId => {
+        const selectedEmployee = employees.find(emp => emp.id === empId);
+        return {
+          employee_id: empId,
+          department_id: selectedEmployee.department_id,
+          shift_type: selectedEmployee.category || 'Shift',
+          date,
+          time_in: timeIn,
+          time_out: timeOut,
+          hourly_rate: Number(hourlyRate),
+          rate_multiplier: Number(rateMultiplier),
+          reason: reason === 'Others' ? otherReason.trim() : reason,
+          description: description.trim(),
+          captured_by: profile.id,
+          status: 'Pending'
+        };
+      })
+
+      const { error } = await supabase
+        .from('overtime_records')
+        .insert(rows)
+
+      if (error) throw error
+
+      toast.success(`Overtime captured successfully for ${selectedEmployeeIds.length} employee(s)!`)
+      navigate('/records')
+    } catch (err) {
+      console.error("Capture submit failed:", err.message)
+      toast.error(err.message || "Failed to capture overtime record.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6 font-sans">
+      {/* Top Breadcrumb Navigation */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate('/records')}
+          className="flex items-center justify-center p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:text-[#006939] hover:bg-gray-50 transition-colors shadow-sm"
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <div>
+          <h2 className="text-xl font-[900] text-[#1A1A1A] uppercase tracking-tight font-sans">
+            Capture Overtime Entry
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Log a new overtime session for supervisor review.
+          </p>
+        </div>
+      </div>
+
+      {/* Main Capture Form */}
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-100 shadow-xl shadow-black/5 overflow-hidden relative">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#006939]"></div>
+
+        <div className="p-6 sm:p-8 space-y-6">
+          {/* Section 1: Searchable Checkbox Grid of Employees */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider flex items-center gap-1.5">
+                <User size={14} />
+                <span>Select Employees ({selectedEmployeeIds.length} Selected)</span>
+              </label>
+              
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filteredIds = filteredEmployees.map(emp => emp.id)
+                    setSelectedEmployeeIds(prev => {
+                      const merged = new Set([...prev, ...filteredIds])
+                      return Array.from(merged)
+                    })
+                  }}
+                  className="text-xs font-bold text-[#006939] hover:underline"
+                >
+                  Select Filtered
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEmployeeIds([])}
+                  className="text-xs font-bold text-red-600 hover:underline"
+                >
+                  Clear All
+                </button>
+                <span className="text-gray-300">|</span>
+                {/* Quick Add Employee shortcut */}
+                <button
+                  type="button"
+                  onClick={() => setQuickAddOpen(true)}
+                  className="flex items-center gap-1 text-xs font-bold text-[#FDB913] bg-[#004D2A] hover:bg-[#006939] px-2.5 py-1 rounded-md transition-colors"
+                >
+                  <UserPlus size={12} />
+                  <span>Add New Employee</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative rounded-lg shadow-sm">
+              <input
+                type="text"
+                placeholder="Search employees by name, staff ID, department, or category..."
+                value={employeeSearchText}
+                onChange={(e) => setEmployeeSearchText(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006939] focus:bg-white transition-all"
+              />
+            </div>
+
+            {/* Scrollable grid box for employees list */}
+            <div className="border border-gray-150 rounded-xl bg-gray-50 p-4 max-h-[220px] overflow-y-auto">
+              {loadingEmployees ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-10 bg-white rounded-lg animate-pulse"></div>
+                  ))}
+                </div>
+              ) : filteredEmployees.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {filteredEmployees.map(emp => {
+                    const isSelected = selectedEmployeeIds.includes(emp.id)
+                    return (
+                      <label
+                        key={emp.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'bg-[#E8F5EE] border-[#006939] shadow-sm shadow-[#006939]/5' 
+                            : 'bg-white border-gray-150 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            if (isSelected) {
+                              setSelectedEmployeeIds(prev => prev.filter(id => id !== emp.id))
+                            } else {
+                              setSelectedEmployeeIds(prev => [...prev, emp.id])
+                            }
+                          }}
+                          className="w-4 h-4 text-[#006939] border-gray-300 rounded focus:ring-[#006939]"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <p className="text-xs font-bold text-gray-800 truncate">
+                              {emp.full_name} {emp.id === profile?.id ? '(Me)' : ''}
+                            </p>
+                            <span className="text-[10px] font-bold text-[#006939] bg-[#E8F5EE] px-1.5 py-0.5 rounded">
+                              {emp.staff_id || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-gray-500 mt-0.5">
+                            <span className="truncate">{emp.departments?.name}</span>
+                            <span className="font-semibold text-gray-700 bg-gray-100 px-1 rounded">
+                              {emp.category || 'Shift'}
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-gray-400 text-xs">
+                  No employees found matching "{employeeSearchText}"
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 2: Shift Date and Times */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Calendar size={14} />
+                <span>Shift Date</span>
+              </label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
+                disabled={submitting}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Clock size={14} />
+                <span>Time In</span>
+              </label>
+              <input
+                type="time"
+                required
+                value={timeIn}
+                onChange={(e) => setTimeIn(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
+                disabled={submitting}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Clock size={14} />
+                <span>Time Out</span>
+              </label>
+              <input
+                type="time"
+                required
+                value={timeOut}
+                onChange={(e) => setTimeOut(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
+                disabled={submitting}
+              />
+            </div>
+          </div>
+
+          {/* Section 3: Financial Calculations */}
+          {isAdmin(profile) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#006939]/5 border border-[#006939]/10 rounded-2xl p-5">
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <DollarSign size={14} />
+                  <span>Hourly Rate ($)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all"
+                  placeholder="25.00"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
+                  Rate Multiplier
+                </label>
+                <select
+                  required
+                  value={rateMultiplier}
+                  onChange={(e) => setRateMultiplier(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
+                  disabled={submitting}
+                >
+                  <option value="1.5">1.5x (Standard Overtime)</option>
+                  <option value="2.0">2.0x (Sunday / Public Holiday)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Section 4: Live Hours & Payout Summary Panel (High Premium Visual) */}
+          <div className="bg-gradient-to-r from-[#004D2A] to-[#006939] rounded-2xl p-6 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 shadow-md shadow-[#004D2A]/10">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-white/10 rounded-xl">
+                <Calculator size={24} className="text-[#FDB913]" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-white/60 font-bold">Live Calculator</p>
+                <p className="text-xs text-white/80 mt-0.5">
+                  {timeIn} to {timeOut} {Number(timeOut.replace(':', '')) < Number(timeIn.replace(':', '')) ? '(Overnight Shift)' : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-8 sm:gap-12 flex-wrap sm:flex-nowrap">
+              <div>
+                <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Overtime Hours</p>
+                <p className="text-3xl font-[900] text-[#FDB913] mt-1">{liveHours} <span className="text-xs text-white font-bold">HRS</span></p>
+              </div>
+              {isAdmin(profile) && (
+                <>
+                  <div className="border-l border-white/20 pl-6 sm:pl-8">
+                    <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Payout / Employee</p>
+                    <p className="text-3xl font-[900] text-[#FDB913] mt-1">
+                      ${livePayout.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="border-l border-white/20 pl-6 sm:pl-8">
+                    <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Total Bulk Cost</p>
+                    <p className="text-3xl font-[900] text-[#FDB913] mt-1">
+                      ${(livePayout * selectedEmployeeIds.length).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+
+{/* Reason for Overtime */}
+<div className="mt-4">
+  <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+    <FileText size={14} />
+    Reason
+    <span className="text-red-500">*</span>
+  </label>
+  <select
+    value={reason}
+    onChange={e => setReason(e.target.value)}
+    className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all cursor-pointer"
+    disabled={submitting}
+  >
+    <option value="">Select a Reason</option>
+    <option value="Holiday">Holiday</option>
+    <option value="Replacement">Replacement</option>
+    <option value="Normal Routine Schedule">Normal Routine Schedule</option>
+    <option value="PM">PM</option>
+    <option value="Others">Others</option>
+  </select>
+</div>
+{reason === 'Others' && (
+  <div className="mt-4">
+    <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+      <FileText size={14} />
+      Please specify the reason
+      <span className="text-red-500">*</span>
+    </label>
+    <input
+      type="text"
+      value={otherReason}
+      onChange={e => setOtherReason(e.target.value)}
+      className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+      placeholder="Enter reason for overtime..."
+      disabled={submitting}
+    />
+  </div>
+)}
+        </div>
+
+        {/* Action Panel Footer */}
+        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-end gap-3.5">
+          <button
+            type="button"
+            onClick={() => navigate('/records')}
+            className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors w-full sm:w-auto"
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex items-center justify-center gap-1.5 px-6 py-2.5 bg-[#006939] hover:bg-[#004D2A] text-white rounded-lg text-sm font-bold shadow-md transition-all active:scale-[0.98] w-full sm:w-auto disabled:opacity-50"
+          >
+            {submitting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Saving entry...</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>Save Overtime Entry</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* -------------------------------------------------------
+          QUICK ADD EMPLOYEE MODAL
+          ------------------------------------------------------- */}
+      {quickAddOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center font-sans">
+          {/* Backdrop */}
+          <div onClick={() => setQuickAddOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+
+          {/* Modal Card */}
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-10 animate-scale-up">
+            {/* Header */}
+            <div className="bg-[#006939] px-6 py-4 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <UserPlus size={18} className="text-[#FDB913]" />
+                <h3 className="text-sm font-bold uppercase tracking-wider">Quick Add Employee</h3>
+              </div>
+              <button onClick={() => setQuickAddOpen(false)} className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleQuickAdd} className="p-6 space-y-4">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Add a missing employee to the system. They will be <strong>automatically selected</strong> for this overtime entry once saved.
+              </p>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-1.5">Full Name <span className="text-red-500">*</span></label>
+                <input type="text" required value={qaFullName} onChange={e => setQaFullName(e.target.value)}
+                  placeholder="e.g. James Forson"
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                  disabled={qaSaving} />
+              </div>
+
+              {/* Staff ID & Category */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-1.5">Staff ID <span className="text-red-500">*</span></label>
+                  <input type="text" required value={qaStaffId} onChange={e => setQaStaffId(e.target.value)}
+                    placeholder="e.g. CBI-011"
+                    className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                    disabled={qaSaving} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-1.5">Category</label>
+                  <select value={qaCategory} onChange={e => setQaCategory(e.target.value)}
+                    className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all cursor-pointer"
+                    disabled={qaSaving}>
+                    <option value="Shift">Shift</option>
+                    <option value="Straight Day">Straight Day</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Department */}
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-1.5">Department</label>
+                <select value={qaDepartmentId} onChange={e => setQaDepartmentId(e.target.value)}
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all cursor-pointer"
+                  disabled={qaSaving}>
+                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setQuickAddOpen(false)} disabled={qaSaving}
+                  className="flex-1 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={qaSaving}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#006939] hover:bg-[#004D2A] text-white rounded-lg text-sm font-bold shadow-md transition-all active:scale-[0.98] disabled:opacity-50">
+                  {qaSaving ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
+                  <span>{qaSaving ? 'Saving...' : 'Add & Select'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default NewRecordPage

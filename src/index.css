@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-gray-light text-brand-text-dark font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom Scrollbar for modern premium look */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-brand-gray-light;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-gray/50 rounded-full hover:bg-brand-gray;
+  }
+}
+
+@layer utilities {
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      #f3f4f6 25%,
+      #e5e7eb 50%,
+      #f3f4f6 75%
+    );
+    background-size: 200% 100%;
+    animation: loading-shimmer 1.5s infinite linear;
+  }
+}
+
+@keyframes loading-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Glassmorphism utility for premium cards and indicators */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Base custom font properties if available */
+.font-neo-sans {
+  font-family: 'Neo Sans Pro', 'Neo Sans', 'Inter', sans-serif;
+}
