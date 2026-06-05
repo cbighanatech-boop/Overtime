@@ -60,55 +60,49 @@ export const NewUserPage = () => {
   }, [])
 
   // Handle employee creation
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+    const handleSubmit = async (e) => {
+      e.preventDefault();
 
-    if (!fullName.trim() || !email.trim() || !password) {
-      toast.error("Please fill in all required fields.")
-      return
-    }
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters.")
-      return
-    }
-    if (!departmentId) {
-      toast.error("Please select a department.")
-      return
-    }
+      if (!fullName.trim() || !email.trim() || !password) {
+        toast.error("Please fill in all required fields.");
+        return;
+      }
+      if (password.length < 6) {
+        toast.error("Password must be at least 6 characters.");
+        return;
+      }
+      if (!departmentId) {
+        toast.error("Please select a department.");
+        return;
+      }
 
-    setSubmitting(true)
-    try {
-      // 1. Generate unique simulated user ID
-      const newUserId = `user-${role}-${Math.random().toString(36).substr(2, 9)}`
-
-      // 2. Save directly to local database profiles list
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: newUserId,
+      setSubmitting(true);
+      try {
+        // Use Supabase Auth to create user; triggers will create profile automatically
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
-          password: password,
-          full_name: fullName.trim(),
-          role: role,
-          department_id: departmentId,
-          is_active: true
-        })
+          password,
+          options: {
+            data: {
+              full_name: fullName.trim(),
+              role,
+              department_id: departmentId,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
 
-      if (profileError) throw profileError
-
-      toast.success(`${fullName} has been onboarded successfully! Profile generated.`, {
-        icon: <CheckCircle2 className="text-[#006939]" />
-      })
-      
-      // Redirect back to directory
-      navigate(backPath)
-    } catch (err) {
-      console.error("Onboarding failed:", err.message)
-      toast.error(err.message || "Failed to onboard new user.")
-    } finally {
-      setSubmitting(false)
+        toast.success(`${fullName} has been onboarded successfully!`, {
+          icon: <CheckCircle2 className="text-[#006939]" />,
+        });
+        navigate(backPath);
+      } catch (err) {
+        console.error("Onboarding failed:", err.message);
+        toast.error(err.message || "Failed to onboard new user.");
+      } finally {
+        setSubmitting(false);
+      }
     }
-  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 font-sans">
