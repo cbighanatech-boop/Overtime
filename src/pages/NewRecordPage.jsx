@@ -140,19 +140,18 @@ export const NewRecordPage = () => {
     }
     setQaSaving(true)
     try {
-      const newId = `user-rep-${Math.random().toString(36).substr(2, 9)}`
-      const dummyEmail = `temp-${newId}@cbi-overtime.local`
-      const { error } = await supabase.from('profiles').insert({
-        id: newId,
-        email: dummyEmail,
-        password: 'TemporaryPassword123!',
-        full_name: qaFullName.trim(),
-        staff_id: qaStaffId.trim(),
-        category: qaCategory,
-        role: 'employee',
-        department_id: qaDepartmentId || profile.department_id,
-        is_active: true
-      })
+        const newId = crypto.randomUUID();
+        const dummyEmail = `temp-${newId}@cbi-overtime.local`;
+        const { error } = await supabase.from('profiles').insert({
+          id: newId,
+          email: dummyEmail,
+          full_name: qaFullName.trim(),
+          staff_id: qaStaffId.trim(),
+          category: qaCategory,
+          role: 'employee',
+          department_id: qaDepartmentId || profile.department_id,
+          is_active: true
+        });
       if (error) throw error
 
       toast.success(`${qaFullName} added and selected!`, { icon: <CheckCircle2 className="text-[#006939]" /> })
