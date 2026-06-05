@@ -84,9 +84,6 @@ export const RecordsPage = () => {
           *,
           departments (
             name
-          ),
-          profiles:employee_id!inner (
-            full_name
           )
         `, { count: 'exact' })
 
@@ -108,7 +105,7 @@ export const RecordsPage = () => {
 
       // 3. Search query (employee name check)
       if (searchText.trim()) {
-        query = query.ilike('profiles.full_name', `%${searchText.trim()}%`)
+        query = query.ilike('employee_name', `%${searchText.trim()}%`)
       }
 
       // 4. Date Range Filters
@@ -449,7 +446,7 @@ export const RecordsPage = () => {
 
                       {/* Employee cell */}
                       <td className="px-6 py-4 font-semibold text-[#1A1A1A]">
-                        {rec.profiles?.full_name}
+                        {rec.employee_name}
                       </td>
                     
                     {/* Department cell */}

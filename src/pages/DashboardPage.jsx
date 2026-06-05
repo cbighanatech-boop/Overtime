@@ -87,8 +87,7 @@ export const DashboardPage = () => {
         .from('overtime_records')
         .select(`
           *,
-          departments (name),
-          profiles:employee_id (full_name)
+          departments (name)
         `)
       if (!isAdmin(profile)) {
         recordsQuery = recordsQuery.eq('department_id', profile.department_id)
@@ -123,7 +122,7 @@ export const DashboardPage = () => {
           // Highest overtime record
           if (hours > highestHours) {
             highestHours = hours
-            highestEmployee = rec.profiles?.full_name || 'Unknown'
+            highestEmployee = rec.employee_name || 'Unknown'
           }
 
           // Rep specific

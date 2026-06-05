@@ -96,7 +96,7 @@ export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Employee</span>
-                <span className="font-semibold">{record.profiles?.full_name}</span>
+                <span className="font-semibold">{record.employee_name}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Department</span>

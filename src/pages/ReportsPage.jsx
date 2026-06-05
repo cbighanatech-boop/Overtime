@@ -65,11 +65,6 @@ export const ReportsPage = () => {
           *,
           departments (
             name
-          ),
-          profiles:employee_id (
-            full_name,
-            staff_id,
-            category
           )
         `)
 
@@ -142,9 +137,9 @@ export const ReportsPage = () => {
     try {
       // Map database rows to clean Excel column names
       const worksheetData = records.map(row => ({
-        'Employee Name': row.profiles?.full_name || 'N/A',
-        'Staff ID': row.profiles?.staff_id || 'N/A',
-        'Category': row.profiles?.category || 'N/A',
+        'Employee Name': row.employee_name || 'N/A',
+        'Staff ID': row.employee_id || 'N/A',
+        'Category': row.shift_type || 'N/A',
         'Department': row.departments?.name || 'N/A',
         'Date': row.date,
         'Time In': row.time_in,
@@ -428,7 +423,7 @@ export const ReportsPage = () => {
               <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
                 {records.map((rec) => (
                   <tr key={rec.id} className="hover:bg-[#E8F5EE]/10 transition-colors">
-                    <td className="px-6 py-3.5 font-semibold text-[#1A1A1A]">{rec.profiles?.full_name}</td>
+                    <td className="px-6 py-3.5 font-semibold text-[#1A1A1A]">{rec.employee_name}</td>
                     <td className="px-6 py-3.5 font-medium">{rec.departments?.name}</td>
                     <td className="px-6 py-3.5">{format(parseISO(rec.date), 'MMM dd, yyyy')}</td>
                     <td className="px-6 py-3.5 font-bold text-[#006939]">{rec.overtime_hours} Hrs</td>

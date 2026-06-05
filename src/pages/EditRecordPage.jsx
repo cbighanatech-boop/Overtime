@@ -52,9 +52,6 @@ export const EditRecordPage = () => {
             *,
             departments (
               name
-            ),
-            profiles:employee_id (
-              full_name
             )
           `)
           .eq('id', id)
@@ -70,7 +67,7 @@ export const EditRecordPage = () => {
         }
 
         // Prepopulate form state
-        setRecordOwnerName(data.profiles?.full_name || 'N/A')
+        setRecordOwnerName(data.employee_name || 'N/A')
         setRecordOwnerDept(data.departments?.name || 'N/A')
         setDate(data.date)
         setTimeIn(data.time_in.slice(0, 5)) // Format to HH:MM
