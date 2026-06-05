@@ -25,6 +25,9 @@ export const UsersPage = () => {
 
   const [currentUserId, setCurrentUserId] = useState(null)
 
+  // Departments list for admin assignment
+  const [departments, setDepartments] = useState([])
+
   const fetchUsers = async () => {
     setLoading(true)
     try {
@@ -59,6 +62,13 @@ export const UsersPage = () => {
 
   useEffect(() => {
     fetchUsers()
+    // Load departments for admin assignment
+    const loadDepartments = async () => {
+      const { data, error } = await supabase.from('departments').select('id, name')
+      if (error) console.error('Error loading departments:', error)
+      else setDepartments(data || [])
+    }
+    loadDepartments()
   }, [searchText])
 
   // Admin delete handler with audit logging
@@ -136,6 +146,26 @@ export const UsersPage = () => {
     } catch (err) {
       console.error("Role update failed:", err.message)
       toast.error(err.message || "Failed to update employee role.")
+    }
+  }
+
+  // Admin can assign department to Rep or Supervisor
+  const handleDepartmentChange = async (user, departmentId) => {
+    const deptName = departments.find(d => d.id === departmentId)?.name || ''
+    const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
+    if (!window.confirm(message)) return
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ department_id: departmentId || null })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(`${user.full_name} assigned to ${deptName || 'Unassigned'}.`)
+      // Update local state
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, departments: departmentId ? { id: departmentId, name: deptName } : null, department_id: departmentId } : u))
+    } catch (err) {
+      console.error('Department assign failed:', err.message)
+      toast.error(err.message || 'Failed to assign department.')
     }
   }
 
@@ -296,7 +326,20 @@ export const UsersPage = () => {
 
                     {/* Department cell */}
                     <td className="px-6 py-4 font-medium text-gray-600">
-                      {user.departments?.name || <span className="text-gray-300">Unassigned</span>}
+                       {profile?.role === 'admin' ? (
+                         <select
+                           value={user.departments?.id || ''}
+                           onChange={e => handleDepartmentChange(user, e.target.value)}
+                           className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
+                         >
+                           <option value="">Unassigned</option>
+                           {departments.map(dept => (
+                             <option key={dept.id} value={dept.id}>{dept.name}</option>
+                           ))}
+                         </select>
+                       ) : (
+                         user.departments?.name || <span className="text-gray-300">Unassigned</span>
+                       )}
                     </td>
 
                     {/* Access switch status */}
