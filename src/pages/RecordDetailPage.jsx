@@ -40,16 +40,8 @@ export const RecordDetailPage = () => {
         .from('overtime_records')
         .select(`
           *,
-          departments (
-            name
-          ),
-          profiles:employee_id (
-            full_name,
-            email
-          ),
-          capturer:captured_by (
-            full_name
-          )
+          departments (name),
+          capturer!inner(full_name)
         `)
         .eq('id', id)
         .single()
