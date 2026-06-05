@@ -128,8 +128,8 @@ export const NewEmployeePage = () => {
     }
     setSubmitting(true)
     try {
-      const newUserId = `emp-${Math.random().toString(36).substr(2, 9)}`
-      const dummyEmail = `emp-${newUserId}@cbi-overtime.local`
+      const newUserId = crypto.randomUUID();
+      const dummyEmail = `${newUserId}@cbi-overtime.local`;
       const { error: profileError } = await supabase.from('profiles').insert({
         id: newUserId,
         email: dummyEmail,
@@ -297,8 +297,8 @@ export const NewEmployeePage = () => {
     setBulkUploading(true)
     try {
       const records = validRows.map((row) => ({
-        id: `emp-${Math.random().toString(36).substr(2, 9)}`,
-        email: `emp-${Math.random().toString(36).substr(2, 9)}@cbi-overtime.local`,
+        id: crypto.randomUUID(),
+        email: `${crypto.randomUUID()}@cbi-overtime.local`,
         password: 'NoLogin123!',
         full_name: row.full_name,
         staff_id: row.staff_id,
