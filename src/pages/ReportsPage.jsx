@@ -76,14 +76,14 @@ export const ReportsPage = () => {
         query = query.eq('status', selectedStatus)
       }
       if (startDate) {
-        query = query.gte('date', startDate)
+        query = query.gte('work_date', startDate)
       }
       if (endDate) {
-        query = query.lte('date', endDate)
+        query = query.lte('work_date', endDate)
       }
 
       // Sort by date descending
-      query = query.order('date', { ascending: false })
+      query = query.order('work_date', { ascending: false })
 
       const { data, error } = await query
       if (error) throw error
@@ -141,7 +141,7 @@ export const ReportsPage = () => {
         'Staff ID': row.employee_id || 'N/A',
         'Category': row.shift_type || 'N/A',
         'Department': row.departments?.name || 'N/A',
-        'Date': row.date,
+        'Date': row.work_date,
         'Time In': row.time_in,
         'Time Out': row.time_out,
         'Overtime Hours': Number(row.overtime_hours || 0),
@@ -425,7 +425,7 @@ export const ReportsPage = () => {
                   <tr key={rec.id} className="hover:bg-[#E8F5EE]/10 transition-colors">
                     <td className="px-6 py-3.5 font-semibold text-[#1A1A1A]">{rec.employee_name}</td>
                     <td className="px-6 py-3.5 font-medium">{rec.departments?.name}</td>
-                    <td className="px-6 py-3.5">{format(parseISO(rec.date), 'MMM dd, yyyy')}</td>
+                    <td className="px-6 py-3.5">{format(parseISO(rec.work_date), 'MMM dd, yyyy')}</td>
                     <td className="px-6 py-3.5 font-bold text-[#006939]">{rec.overtime_hours} Hrs</td>
                     {adminView && (
                       <td className="px-6 py-3.5 text-xs">

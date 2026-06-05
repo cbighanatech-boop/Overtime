@@ -178,7 +178,7 @@ export const RecordDetailPage = () => {
               {statusConfig.label}
             </span>
             <span className="text-xs font-semibold text-gray-500">
-              Shift Date: <strong>{format(parseISO(record.date), 'MMMM dd, yyyy')}</strong>
+              Shift Date: <strong>{format(parseISO(record.work_date), 'MMMM dd, yyyy')}</strong>
             </span>
           </div>
           <div className="text-xs text-gray-500 font-medium">

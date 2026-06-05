@@ -106,7 +106,7 @@ export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Shift Date</span>
-                <span className="font-semibold">{record.date}</span>
+                <span className="font-semibold">{record.work_date}</span>
               </div>
               <div>
                 <span className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Hours Earned</span>

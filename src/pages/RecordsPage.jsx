@@ -110,15 +110,15 @@ export const RecordsPage = () => {
 
       // 4. Date Range Filters
       if (startDate) {
-        query = query.gte('date', startDate)
+        query = query.gte('work_date', startDate)
       }
       if (endDate) {
-        query = query.lte('date', endDate)
+        query = query.lte('work_date', endDate)
       }
 
       // 5. Pagination ranges and sort by date descending
       query = query
-        .order('date', { ascending: false })
+        .order('work_date', { ascending: false })
         .order('created_at', { ascending: false })
         .range(offset, offset + ITEMS_PER_PAGE - 1)
 
@@ -456,7 +456,7 @@ export const RecordsPage = () => {
                     
                     {/* Date cell */}
                     <td className="px-6 py-4 text-gray-600 font-medium">
-                      {format(parseISO(rec.date), 'MMM dd, yyyy')}
+                      {format(parseISO(rec.work_date), 'MMM dd, yyyy')}
                     </td>
                     
                     {/* Hours cell */}

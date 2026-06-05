@@ -146,13 +146,13 @@ export const DashboardPage = () => {
 
           // Day trend
           try {
-            const dateStr = format(parseISO(rec.date), 'MMM dd')
+            const dateStr = format(parseISO(rec.work_date), 'MMM dd')
             trendDayMap[dateStr] = (trendDayMap[dateStr] || 0) + hours
           } catch (_) {}
 
           // Month trend
           try {
-            const monthStr = format(startOfMonth(parseISO(rec.date)), 'MMM yyyy')
+            const monthStr = format(startOfMonth(parseISO(rec.work_date)), 'MMM yyyy')
             trendMonthMap[monthStr] = (trendMonthMap[monthStr] || 0) + hours
           } catch (_) {}
         })
