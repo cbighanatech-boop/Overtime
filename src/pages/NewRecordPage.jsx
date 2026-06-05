@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase/client'
+import { logActivity } from '../utils/auditLogger'
 import { useAuth } from '../context/AuthContext'
 import { 
   ArrowLeft, 
@@ -259,7 +260,8 @@ export const NewRecordPage = () => {
 
       if (error) throw error
 
-      toast.success(`Overtime captured successfully for ${selectedEmployeeIds.length} employee(s)!`)
+      await logActivity('Created Overtime Entry', { selectedEmployeeIds, date, description, reason });
+        toast.success(`Overtime captured successfully for ${selectedEmployeeIds.length} employee(s)!`);
       navigate('/records')
     } catch (err) {
       console.error("Capture submit failed:", err.message)

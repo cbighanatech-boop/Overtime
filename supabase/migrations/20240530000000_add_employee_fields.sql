@@ -1,5 +1,2 @@
--- Add employee fields to profiles table
-ALTER TABLE public.profiles
-ADD COLUMN staff_id TEXT UNIQUE,
-ADD COLUMN category TEXT,
-ADD COLUMN position TEXT;
+-- Migration 20240530000000_add_employee_fields.sql
+-- Columns staff_id, category, position already exist; no changes needed.

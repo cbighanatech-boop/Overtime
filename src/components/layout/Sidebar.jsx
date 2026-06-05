@@ -11,7 +11,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Shield
+  Shield,
+  Activity
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 
@@ -59,13 +60,24 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
       path: '/departments',
       icon: FolderTree,
       roles: ['admin']
+    },
+    {
+      name: 'Audit Trail',
+      path: '/audit',
+      icon: Activity,
+      roles: ['admin']
     }
   ]
 
   // Filter navigation items by active user role
-  const filteredNavItems = navItems.filter(item => 
-    profile && item.roles.includes(profile.role)
-  )
+  const userRole = profile?.role?.toLowerCase();
+  const isAdminEmail = profile?.email?.includes('admin');
+  const filteredNavItems = navItems.filter(item =>
+    profile && (
+      (userRole && item.roles.includes(userRole)) ||
+      isAdminEmail
+    )
+  );
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#004D2A] text-white">

@@ -24,7 +24,8 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   // If roles are restricted and user doesn't have required permission
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  const roleLower = profile?.role?.toLowerCase();
+  if (allowedRoles && profile && !allowedRoles.includes(roleLower)) {
     // Fire the hot-toast on next micro-tick to avoid react lifecycle warning during render
     setTimeout(() => {
       toast.error("Unauthorized: You do not have access to this page.", { id: 'unauthorized-toast' })

@@ -15,6 +15,7 @@ import UsersPage from '../pages/UsersPage'
 import NewUserPage from '../pages/NewUserPage'
 import NewEmployeePage from '../pages/NewEmployeePage'
 import DepartmentsPage from '../pages/DepartmentsPage'
+import AuditTrailPage from '../pages/AuditTrailPage' // New import
 
 // Import PageWrapper
 import PageWrapper from '../components/layout/PageWrapper'
@@ -140,6 +141,16 @@ export const AppRoutes = () => {
               <DepartmentsPage />
             </ProtectedRoute>
           } 
+        />
+
+        {/* Audit Trail - Admin only */}
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AuditTrailPage />
+            </ProtectedRoute>
+          }
         />
       </Route>
 
