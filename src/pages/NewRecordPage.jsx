@@ -235,19 +235,18 @@ export const NewRecordPage = () => {
 
     setSubmitting(true)
     try {
-        const rows = selectedEmployeeIds.map(empId => {
+      const rows = selectedEmployeeIds.map(empId => {
         const selectedEmployee = employees.find(emp => emp.id === empId);
         return {
-          employee_id: empId,
+          employee_name: selectedEmployee.full_name,
+          employee_id: selectedEmployee.staff_id || empId,
           department_id: selectedEmployee.department_id,
           shift_type: selectedEmployee.category || 'Shift',
-          date,
+          work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          hourly_rate: Number(hourlyRate),
-          rate_multiplier: Number(rateMultiplier),
           reason: reason === 'Others' ? otherReason.trim() : reason,
-          description: description.trim(),
+          comments: description.trim(),
           captured_by: profile.id,
           status: 'Pending'
         };
@@ -535,6 +534,24 @@ export const NewRecordPage = () => {
             </div>
           </div>
 
+
+{/* Task Description */}
+<div className="mt-6">
+  <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+    <FileText size={14} />
+    Task Description
+    <span className="text-red-500">*</span>
+  </label>
+  <textarea
+    required
+    value={description}
+    onChange={(e) => setDescription(e.target.value)}
+    className="block w-full px-3.5 py-3 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all resize-none"
+    placeholder="Briefly describe the task or work done during overtime..."
+    rows={3}
+    disabled={submitting}
+  />
+</div>
 
 {/* Reason for Overtime */}
 <div className="mt-4">
