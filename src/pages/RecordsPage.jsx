@@ -119,7 +119,6 @@ export const RecordsPage = () => {
       // 5. Pagination ranges and sort by date descending
       query = query
         .order('work_date', { ascending: false })
-        .order('created_at', { ascending: false })
         .range(offset, offset + ITEMS_PER_PAGE - 1)
 
       const { data, count, error } = await query
