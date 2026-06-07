@@ -151,9 +151,8 @@ export const ReportsPage = () => {
         'Overtime x2.0': row.rate_multiplier == 2.0 ? Number(row.overtime_hours || 0) : 0,
         'Estimated Payout (GH₵)': adminView ? Number(row.estimated_payout || 0) : null,
         'Status': row.status,
-        'Task Description': row.description,
-        'Comments': row.comment || '',
-        'Day Type': isWeekend(parseISO(row.date)) ? 'Weekend' : 'Weekday'
+        'Task Description': row.description || '',
+        'Day Type': isWeekend(parseISO(row.work_date)) ? 'Weekend' : 'Weekday'
       }))
 
       const worksheet = XLSX.utils.json_to_sheet(worksheetData)
