@@ -245,8 +245,11 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          reason: reason === 'Others' ? otherReason.trim() : reason,
-          comments: description.trim(),
+          overtime_hours: liveHours,
+          hourly_rate: Number(hourlyRate),
+          rate_multiplier: Number(rateMultiplier),
+          estimated_payout: livePayout,
+          description: description.trim(),
           captured_by: profile.id,
           status: 'Pending'
         };
