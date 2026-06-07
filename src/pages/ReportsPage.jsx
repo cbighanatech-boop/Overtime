@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
 import { useAuth } from '../context/AuthContext'
 import { isAdmin } from '../utils/roleHelpers'
@@ -56,7 +56,7 @@ export const ReportsPage = () => {
   }, [])
 
   // Fetch all filtered records for preview & export (bypasses pagination to export ALL matching)
-  const loadReportsData = async () => {
+  const loadReportsData = useCallback(async () => {
     setLoading(true)
     try {
       let query = supabase
@@ -112,12 +112,13 @@ export const ReportsPage = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedDept, selectedStatus, startDate, endDate])
 
   // Load when filter changes
   useEffect(() => {
+    if (!profile) return
     loadReportsData()
-  }, [selectedDept, selectedStatus, startDate, endDate])
+  }, [profile, selectedDept, selectedStatus, startDate, endDate])
 
   // Clear filters
   const handleClearFilters = () => {
