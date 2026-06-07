@@ -56,25 +56,33 @@ export const ReportsPage = () => {
 
       if (error) throw error
 
-      setRecords(data || [])
+      const cleanedData = (data || []).map(rec => ({
+        ...rec,
+        overtime_hours: Number(rec.overtime_hours || 0),
+        estimated_payout: Number(rec.estimated_payout || 0),
+        hourly_rate: Number(rec.hourly_rate || 0),
+        rate_multiplier: Number(rec.rate_multiplier || 1.5)
+      }))
+
+      setRecords(cleanedData)
 
       let totalHours = 0
       let totalPayout = 0
-      if (data) {
-        data.forEach(rec => {
-          totalHours += Number(rec.overtime_hours || 0)
-          totalPayout += Number(rec.estimated_payout || 0)
-        })
-      }
+      cleanedData.forEach(rec => {
+        totalHours += rec.overtime_hours
+        totalPayout += rec.estimated_payout
+      })
 
       setSummary({
         totalHours: Number(totalHours.toFixed(1)),
         totalPayout: Number(totalPayout.toFixed(2)),
-        recordCount: data?.length || 0
+        recordCount: cleanedData.length
       })
     } catch (err) {
-      console.error('Error loading reports:', err.message)
+      console.error('Error loading reports:', err)
       toast.error('Failed to load reports.')
+      setRecords([])
+      setSummary({ totalHours: 0, totalPayout: 0, recordCount: 0 })
     } finally {
       setLoading(false)
     }
@@ -184,7 +192,7 @@ export const ReportsPage = () => {
             <div>
               <span className="block text-xs font-bold text-gray-400 uppercase">Est. Payout</span>
               <span className="text-2xl font-[900] text-[#1A1A1A] mt-1">
-                GH₵{(summary.totalPayout || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                GH₵{(summary.totalPayout || 0).toFixed(2)}
               </span>
             </div>
           </div>
@@ -286,17 +294,20 @@ export const ReportsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {records.map((rec) => (
-                  <tr key={rec.id} className="hover:bg-[#E8F5EE]/10">
-                    <td className="px-6 py-3.5 font-semibold">{rec.employee_name}</td>
-                    <td className="px-6 py-3.5 text-gray-600">{rec.departments?.name}</td>
-                    <td className="px-6 py-3.5 text-gray-600">{format(parseISO(rec.work_date), 'MMM dd, yyyy')}</td>
-                    <td className="px-6 py-3.5 font-bold text-[#006939]">{rec.overtime_hours} Hrs</td>
-                    {adminView && <td className="px-6 py-3.5 text-xs">GH₵{Number(rec.hourly_rate || 0)} ({Number(rec.rate_multiplier || 1.5)}x)</td>}
-                    {adminView && <td className="px-6 py-3.5 font-bold text-[#006939]">GH₵{Number(rec.estimated_payout || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>}
-                    <td className="px-6 py-3.5">{getStatusBadge(rec.status)}</td>
-                  </tr>
-                ))}
+                {records.map((rec) => {
+                  const payoutStr = rec.estimated_payout?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'
+                  return (
+                    <tr key={rec.id} className="hover:bg-[#E8F5EE]/10">
+                      <td className="px-6 py-3.5 font-semibold">{rec.employee_name || 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-gray-600">{rec.departments?.name || 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-gray-600">{rec.work_date ? format(parseISO(rec.work_date), 'MMM dd, yyyy') : 'N/A'}</td>
+                      <td className="px-6 py-3.5 font-bold text-[#006939]">{rec.overtime_hours || 0} Hrs</td>
+                      {adminView && <td className="px-6 py-3.5 text-xs">GH₵{rec.hourly_rate || 0} ({rec.rate_multiplier || 1.5}x)</td>}
+                      {adminView && <td className="px-6 py-3.5 font-bold text-[#006939]">GH₵{payoutStr}</td>}
+                      <td className="px-6 py-3.5">{getStatusBadge(rec.status)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
