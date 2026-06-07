@@ -36,6 +36,36 @@ import {
 import { format, parseISO, startOfMonth } from 'date-fns'
 import { isAdmin, isRep, isSupervisor } from '../utils/roleHelpers'
 
+// Safe tick formatter — prevents Recharts calling toLocaleString() on undefined
+const safeTick = (value) => (value === undefined || value === null ? '' : String(value))
+
+// Tooltip components defined OUTSIDE the page component to prevent remount crashes
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white border border-[#A9AEB1] p-3 rounded-lg shadow-md font-sans">
+        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">{label}</p>
+        <p className="text-sm font-extrabold text-[#006939] mt-1">
+          Overtime: <span className="text-[#FDB913]">{payload[0]?.value}</span> Hrs
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
+const ReasonTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white border border-gray-200 p-3 rounded-lg shadow-md font-sans text-xs">
+        <p className="font-bold text-gray-700">{payload[0]?.payload?.name}</p>
+        <p className="text-[#006939] font-extrabold mt-0.5">{payload[0]?.value} records</p>
+      </div>
+    )
+  }
+  return null
+}
+
 // Color theme
 const GREEN_SHADES = ['#006939', '#34D399', '#FDB913', '#60A5FA', '#A78BFA', '#F87171']
 const STATUS_COLORS = { Approved: '#10B981', Pending: '#FDB913', Declined: '#EF4444' }
@@ -229,32 +259,6 @@ export const DashboardPage = () => {
     return () => { supabase.removeChannel(channel) }
   }, [profile])
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white border border-[#A9AEB1] p-3 rounded-lg shadow-md font-sans">
-          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">{label}</p>
-          <p className="text-sm font-extrabold text-[#006939] mt-1">
-            Overtime: <span className="text-[#FDB913]">{payload[0].value}</span> Hrs
-          </p>
-        </div>
-      )
-    }
-    return null
-  }
-
-  const ReasonTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white border border-gray-200 p-3 rounded-lg shadow-md font-sans text-xs">
-          <p className="font-bold text-gray-700">{payload[0].payload.name}</p>
-          <p className="text-[#006939] font-extrabold mt-0.5">{payload[0].value} records</p>
-        </div>
-      )
-    }
-    return null
-  }
-
   // Loading skeleton
   if (loading) {
     return (
@@ -402,7 +406,7 @@ export const DashboardPage = () => {
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Est. Total Payout</p>
                 <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">
-                  GH₵{metrics.estimatedPayout.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  GH₵{(metrics.estimatedPayout || 0).toFixed(2)}
                 </h3>
               </div>
               <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600 shrink-0">
@@ -523,7 +527,7 @@ export const DashboardPage = () => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={safeTick} />
                   <Tooltip content={<CustomTooltip />} />
                   <Area
                     type="monotone"
@@ -623,7 +627,7 @@ export const DashboardPage = () => {
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={safeTick} />
                   <Tooltip formatter={(value) => [`${value} Hrs`, 'Hours']} />
                   <Bar dataKey="Hours" radius={[6, 6, 0, 0]}>
                     {(isAdmin(profile) ? deptData : statusData).map((entry, index) => (

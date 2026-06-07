@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import MobileDrawer from './MobileDrawer'
+import ErrorBoundary from '../ErrorBoundary'
 
 export const PageWrapper = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -32,7 +33,7 @@ export const PageWrapper = ({ children }) => {
 
         {/* Dynamic, scrollable workspace pane */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#F3F4F6]">
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
     </div>
