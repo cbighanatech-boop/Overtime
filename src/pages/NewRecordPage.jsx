@@ -1,4 +1,11 @@
 import React, { useState, useEffect } from 'react'
+
+// Bulletproof currency formatter — never throws even if value is null/undefined/NaN
+const safeCurrency = (value) => {
+  const num = parseFloat(value)
+  if (isNaN(num)) return '0.00'
+  return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { logActivity } from '../utils/auditLogger'
@@ -523,13 +530,13 @@ export const NewRecordPage = () => {
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
                     <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Payout / Employee</p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                      ${livePayout.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ${safeCurrency(livePayout)}
                     </p>
                   </div>
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
                     <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Total Bulk Cost</p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                      ${(livePayout * selectedEmployeeIds.length).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ${safeCurrency(livePayout * selectedEmployeeIds.length)}
                     </p>
                   </div>
                 </>

@@ -6,6 +6,13 @@ import { Filter, Clock, DollarSign, FolderOpen, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 
+// Bulletproof currency formatter — never throws even if value is null/undefined/NaN
+const safeCurrency = (value) => {
+  const num = parseFloat(value)
+  if (isNaN(num)) return '0.00'
+  return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 export const ReportsPage = () => {
   const { profile } = useAuth()
   const adminView = isAdmin(profile)
@@ -54,20 +61,14 @@ export const ReportsPage = () => {
           throw error
         }
 
-        if (!data) {
-          setRecords([])
-          setTotalHours(0)
-          setTotalPayout(0)
-          return
-        }
-
-        setRecords(data)
+        const rows = data || []
+        setRecords(rows)
 
         let hours = 0
         let payout = 0
-        for (let i = 0; i < data.length; i++) {
-          const h = parseFloat(data[i].overtime_hours) || 0
-          const p = parseFloat(data[i].estimated_payout) || 0
+        for (let i = 0; i < rows.length; i++) {
+          const h = parseFloat(rows[i].overtime_hours) || 0
+          const p = parseFloat(rows[i].estimated_payout) || 0
           hours += h
           payout += p
         }
@@ -102,7 +103,7 @@ export const ReportsPage = () => {
       'Declined': 'bg-[#FEE2E2] text-[#991B1B] border-[#DC2626]'
     }
     const style = badges[status] || 'bg-gray-100 text-gray-800'
-    return <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${style}`}>{status}</span>
+    return <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${style}`}>{status || 'Unknown'}</span>
   }
 
   if (!profile) return <div className="p-8">Loading...</div>
@@ -131,7 +132,7 @@ export const ReportsPage = () => {
               <DollarSign className="text-emerald-600" size={20} />
               <div>
                 <span className="block text-xs font-bold text-gray-400">EST. PAYOUT</span>
-                <span className="text-2xl font-[900]">GH₵{totalPayout.toFixed(2)}</span>
+                <span className="text-2xl font-[900]">GH₵{safeCurrency(totalPayout)}</span>
               </div>
             </div>
           </div>
@@ -227,11 +228,12 @@ export const ReportsPage = () => {
                   const deptName = rec.departments?.name || 'N/A'
                   const empName = rec.employee_name || 'N/A'
                   const status = rec.status || 'Pending'
-                  const hours = rec.overtime_hours || 0
-                  const rate = rec.hourly_rate || 0
-                  const mult = rec.rate_multiplier || 1.5
-                  const payout = rec.estimated_payout || 0
-                  const workDate = rec.work_date ? format(parseISO(rec.work_date), 'MMM dd, yyyy') : 'N/A'
+                  const hours = parseFloat(rec.overtime_hours) || 0
+                  const rate = parseFloat(rec.hourly_rate) || 0
+                  const mult = parseFloat(rec.rate_multiplier) || 1.5
+                  const workDate = rec.work_date
+                    ? format(parseISO(rec.work_date), 'MMM dd, yyyy')
+                    : 'N/A'
 
                   return (
                     <tr key={rec.id} className="hover:bg-[#E8F5EE]/10">
@@ -239,8 +241,16 @@ export const ReportsPage = () => {
                       <td className="px-6 py-3.5 text-gray-600">{deptName}</td>
                       <td className="px-6 py-3.5 text-gray-600">{workDate}</td>
                       <td className="px-6 py-3.5 font-bold text-[#006939]">{hours} Hrs</td>
-                      {adminView && <td className="px-6 py-3.5 text-xs">GH₵{rate} ({mult}x)</td>}
-                      {adminView && <td className="px-6 py-3.5 font-bold text-[#006939]">GH₵{parseFloat(payout).toFixed(2)}</td>}
+                      {adminView && (
+                        <td className="px-6 py-3.5 text-xs">
+                          GH₵{safeCurrency(rate)} ({mult}x)
+                        </td>
+                      )}
+                      {adminView && (
+                        <td className="px-6 py-3.5 font-bold text-[#006939]">
+                          GH₵{safeCurrency(rec.estimated_payout)}
+                        </td>
+                      )}
                       <td className="px-6 py-3.5">{getStatusBadge(status)}</td>
                     </tr>
                   )

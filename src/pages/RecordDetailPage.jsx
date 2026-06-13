@@ -1,4 +1,11 @@
 import React, { useState, useEffect } from 'react'
+
+// Bulletproof currency formatter — never throws even if value is null/undefined/NaN
+const safeCurrency = (value) => {
+  const num = parseFloat(value)
+  if (isNaN(num)) return '0.00'
+  return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { useAuth } from '../context/AuthContext'
@@ -254,7 +261,7 @@ export const RecordDetailPage = () => {
                   <span className="text-xs uppercase tracking-wider font-bold">Estimated Session Payout</span>
                 </div>
                 <span className="text-2xl font-[900] text-[#FDB913]">
-                  ${record.estimated_payout?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  GH₵{safeCurrency(record?.estimated_payout)}
                 </span>
               </div>
             )}
