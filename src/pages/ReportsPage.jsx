@@ -232,9 +232,16 @@ export const ReportsPage = () => {
                   const hours = parseFloat(rec.overtime_hours) || 0
                   const rate = parseFloat(rec.hourly_rate) || 0
                   const mult = parseFloat(rec.rate_multiplier) || 1.5
-                  const workDate = rec.work_date
-                    ? format(parseISO(rec.work_date), 'MMM dd, yyyy')
-                    : 'N/A'
+                  let workDate = 'N/A'
+                  if (rec.work_date) {
+                    const parsed = parseISO(rec.work_date)
+                    if (!isNaN(parsed)) {
+                      workDate = format(parsed, 'MMM dd, yyyy')
+                    } else {
+                      // Fallback if the date string is malformed
+                      workDate = String(rec.work_date)
+                    }
+                  }
 
                   return (
                     <tr key={rec.id} className="hover:bg-[#E8F5EE]/10">

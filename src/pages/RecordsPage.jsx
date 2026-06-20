@@ -455,7 +455,7 @@ export const RecordsPage = () => {
                     
                     {/* Date cell */}
                     <td className="px-6 py-4 text-gray-600 font-medium">
-                      {format(parseISO(rec.work_date), 'MMM dd, yyyy')}
+                      {rec.work_date && !isNaN(parseISO(rec.work_date)) ? format(parseISO(rec.work_date), 'MMM dd, yyyy') : String(rec.work_date || 'N/A')}
                     </td>
                     
                     {/* Hours cell */}

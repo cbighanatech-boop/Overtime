@@ -6,6 +6,14 @@ const safeCurrency = (value) => {
   if (isNaN(num)) return '0.00'
   return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+// Bulletproof date formatter
+const safeDate = (dateStr, fmt) => {
+  if (!dateStr) return 'N/A'
+  const parsed = parseISO(dateStr)
+  if (!isNaN(parsed)) return format(parsed, fmt)
+  return String(dateStr)
+}
+
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { useAuth } from '../context/AuthContext'
@@ -185,11 +193,11 @@ export const RecordDetailPage = () => {
               {statusConfig.label}
             </span>
             <span className="text-xs font-semibold text-gray-500">
-              Shift Date: <strong>{format(parseISO(record.work_date), 'MMMM dd, yyyy')}</strong>
+              Shift Date: <strong>{safeDate(record.work_date, 'MMMM dd, yyyy')}</strong>
             </span>
           </div>
           <div className="text-xs text-gray-500 font-medium">
-            Logged by {record.capturer?.full_name || 'N/A'} on {format(parseISO(record.created_at), 'MMM dd, yyyy')}
+            Logged by {record.capturer?.full_name || 'N/A'} on {safeDate(record.created_at, 'MMM dd, yyyy')}
           </div>
         </div>
 
@@ -291,7 +299,7 @@ export const RecordDetailPage = () => {
                     Reviewed By: <strong className="text-gray-800">{reviewerProfile?.full_name || 'System Auditor'}</strong>
                   </div>
                   <div>
-                    Decision Date: <strong>{record.reviewed_at ? format(parseISO(record.reviewed_at), 'MMM dd, yyyy hh:mm a') : 'N/A'}</strong>
+                    Decision Date: <strong>{record.reviewed_at ? safeDate(record.reviewed_at, 'MMM dd, yyyy hh:mm a') : 'N/A'}</strong>
                   </div>
                 </div>
 
