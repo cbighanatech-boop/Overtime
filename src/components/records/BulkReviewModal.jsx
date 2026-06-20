@@ -25,9 +25,9 @@ export const BulkReviewModal = ({ isOpen, onClose, selectedRecordIds, actionType
         .from('overtime_records')
         .update({
           status: actionType,
-          approved_by: profile.id,
-          approved_at: new Date().toISOString(),
-          comment: comment.trim() || null
+          reviewed_by: profile.id,
+          reviewed_at: new Date().toISOString(),
+          comments: comment.trim() || null
         })
         .in('id', selectedRecordIds)
 

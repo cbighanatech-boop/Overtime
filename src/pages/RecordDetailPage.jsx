@@ -303,13 +303,13 @@ export const RecordDetailPage = () => {
                   </div>
                 </div>
 
-                {record.comment && (
+                {record.comments && (
                   <div className="space-y-1.5">
                     <span className="block text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1">
                       <MessageSquare size={10} /> Reviewer Comments
                     </span>
                     <blockquote className="text-sm italic text-gray-700 border-l-2 border-[#006939] pl-3 py-0.5">
-                      "{record.comment}"
+                      "{record.comments}"
                     </blockquote>
                   </div>
                 )}

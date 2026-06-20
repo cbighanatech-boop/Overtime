@@ -14,7 +14,7 @@ export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
   // Reset comment when record changes
   useEffect(() => {
     if (record) {
-      setComment(record.comment || '')
+      setComment(record.comments || '')
     }
   }, [record])
 
@@ -27,9 +27,9 @@ export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
         .from('overtime_records')
         .update({
           status: newStatus,
-          approved_by: profile.id,
-          approved_at: new Date().toISOString(),
-          comment: comment.trim() || null
+          reviewed_by: profile.id,
+          reviewed_at: new Date().toISOString(),
+          comments: comment.trim() || null
         })
         .eq('id', record.id)
 
