@@ -252,7 +252,6 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          overtime_hours: liveHours,
           hourly_rate: Number(hourlyRate),
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: livePayout,
