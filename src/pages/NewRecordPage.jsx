@@ -256,6 +256,7 @@ export const NewRecordPage = () => {
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: livePayout,
           description: description.trim(),
+          reason: reason === 'Others' ? otherReason.trim() : reason,
           captured_by: profile.id,
           status: 'Pending'
         };
