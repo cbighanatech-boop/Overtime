@@ -7,9 +7,10 @@ import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 
 // Bulletproof currency formatter — never throws even if value is null/undefined/NaN
+// Bulletproof currency formatter — never throws even if value is null/undefined/NaN
 const safeCurrency = (value) => {
   const num = parseFloat(value)
-  if (isNaN(num)) return '0.00'
+  if (isNaN(num) || value == null) return '0.00'
   return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
@@ -196,7 +197,7 @@ export const ReportsPage = () => {
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-          <h4 className="text-xs font-bold text-gray-500 uppercase">{records.length} Records</h4>
+          <h4 className="text-xs font-bold text-gray-500 uppercase">{(Array.isArray(records) ? records.length : 0)} Records</h4>
         </div>
 
         {loading ? (
@@ -224,7 +225,7 @@ export const ReportsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {records.map((rec) => {
+                {(Array.isArray(records) ? records : []).map((rec) => {
                   const deptName = rec.departments?.name || 'N/A'
                   const empName = rec.employee_name || 'N/A'
                   const status = rec.status || 'Pending'
