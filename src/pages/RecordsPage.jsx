@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FolderOpen
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { canEditRecord, canDeleteRecord, canReviewRecord, canSelectRecord } from '../utils/roleHelpers'
 import ReviewModal from '../components/records/ReviewModal'
 import BulkReviewModal from '../components/records/BulkReviewModal'
@@ -35,7 +36,8 @@ export const RecordsPage = () => {
   const [records, setRecords] = useState([])
   const [departments, setDepartments] = useState([])
   const [totalCount, setTotalCount] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [exportLoading, setExportLoading] = useState(false)
+
 
   // Filters State
   const [searchText, setSearchText] = useState('')
@@ -195,6 +197,65 @@ export const RecordsPage = () => {
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page)
+    }
+  }
+
+  // Export all filtered records to Excel
+  const exportRecords = async () => {
+    if (!profile) return
+    setExportLoading(true)
+    try {
+      // Build same query as fetchRecords but without pagination
+      let query = supabase
+        .from('overtime_records')
+        .select(`*, departments (name)`, { count: 'exact' })
+
+      if (!profile.role || profile.role === 'admin') {
+        if (selectedDept) query = query.eq('department_id', selectedDept)
+      } else {
+        query = query.eq('department_id', profile.department_id)
+      }
+
+      if (selectedStatus) query = query.eq('status', selectedStatus)
+      if (searchText.trim()) query = query.ilike('employee_name', `%${searchText.trim()}%`)
+      if (startDate) query = query.gte('work_date', startDate)
+      if (endDate) query = query.lte('work_date', endDate)
+
+      // Order newest first
+      query = query.order('work_date', { ascending: false })
+
+      const { data, error } = await query
+      if (error) throw error
+
+      // Convert to worksheet
+      const worksheet = XLSX.utils.json_to_sheet(data.map(rec => ({
+        Employee: rec.employee_name,
+        Department: rec.departments?.name,
+        Date: rec.work_date,
+        Hours: rec.overtime_hours,
+        Rate: rec.hourly_rate,
+        Multiplier: rec.rate_multiplier,
+        Payout: rec.estimated_payout,
+        Description: rec.description,
+        Reason: rec.reason,
+        Status: rec.status,
+      })))
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Overtime')
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([wbout], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `overtime_export_${new Date().toISOString().slice(0,10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Exported records to Excel')
+    } catch (err) {
+      console.error('Export failed:', err.message)
+      toast.error(err.message || 'Failed to export records')
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -363,14 +424,24 @@ export const RecordsPage = () => {
 
         {/* Clear Filters indicator */}
         {(searchText || selectedStatus || selectedDept || startDate || endDate) && (
-          <div className="flex justify-end pt-1">
-            <button
-              onClick={handleClearFilters}
-              className="flex items-center gap-1 text-xs text-[#DC2626] font-bold hover:underline"
-            >
-              <XCircle size={14} />
-              <span>Clear Active Filters</span>
-            </button>
+          <div className="flex justify-end pt-1 gap-3">
+                <button
+                  type="button"
+                  onClick={exportRecords}
+                  disabled={exportLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-md text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  <FileSpreadsheet size={14} />
+                  <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
+                </button>
+                <button
+                  onClick={handleClearFilters}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#DC2626] font-bold hover:underline"
+                >
+                  <XCircle size={14} />
+                  <span>Clear Active Filters</span>
+                </button>
+
           </div>
         )}
       </div>
