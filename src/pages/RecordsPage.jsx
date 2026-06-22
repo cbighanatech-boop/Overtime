@@ -33,6 +33,7 @@ export const RecordsPage = () => {
   const navigate = useNavigate()
 
   // State Management
+  const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([])
   const [departments, setDepartments] = useState([])
   const [totalCount, setTotalCount] = useState(0)
