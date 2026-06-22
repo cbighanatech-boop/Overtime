@@ -10,7 +10,6 @@ import RecordsPage from '../pages/RecordsPage'
 import NewRecordPage from '../pages/NewRecordPage'
 import EditRecordPage from '../pages/EditRecordPage'
 import RecordDetailPage from '../pages/RecordDetailPage'
-import ReportsPage from '../pages/ReportsPage'
 import UsersPage from '../pages/UsersPage'
 import NewUserPage from '../pages/NewUserPage'
 import NewEmployeePage from '../pages/NewEmployeePage'
@@ -89,16 +88,6 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['admin', 'rep']}>
               <EditRecordPage />
-            </ProtectedRoute>
-          } 
-        />
-
-        {/* Reports / Export - Admin only */}
-        <Route 
-          path="/reports" 
-          element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ReportsPage />
             </ProtectedRoute>
           } 
         />

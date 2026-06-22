@@ -310,13 +310,6 @@ export const DashboardPage = () => {
           {isAdmin(profile) && (
             <>
               <Link
-                to="/reports"
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#FDB913] hover:bg-[#E0A200] text-[#004D2A] font-bold text-sm shadow-md transition-all active:scale-[0.98]"
-              >
-                <TrendingUp size={16} />
-                <span>Run Analytics</span>
-              </Link>
-              <Link
                 to="/users"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-[#A9AEB1] hover:bg-gray-50 text-gray-700 font-bold text-sm shadow-sm transition-all"
               >

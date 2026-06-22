@@ -16,7 +16,6 @@ export const Header = ({ setMobileOpen }) => {
     if (path === '/records/new') return 'Capture Overtime'
     if (path.startsWith('/records/') && path.endsWith('/edit')) return 'Edit Overtime Record'
     if (path.startsWith('/records/')) return 'Record Details'
-    if (path === '/reports') return 'Analytics & Exports'
     if (path === '/users') return 'User Directory'
     if (path === '/users/new') return 'Onboard New Employee'
     if (path === '/departments') return 'Department Hub'

@@ -44,12 +44,6 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
       roles: ['admin', 'rep', 'supervisor']
     },
     {
-      name: 'Reports',
-      path: '/reports',
-      icon: BarChart3,
-      roles: ['admin']
-    },
-    {
       name: 'Users',
       path: '/users',
       icon: Users,

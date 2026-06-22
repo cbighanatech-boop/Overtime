@@ -230,6 +230,7 @@ export const RecordsPage = () => {
 
       // Convert to worksheet
       const worksheet = XLSX.utils.json_to_sheet(data.map(rec => ({
+        "Staff ID": rec.employee_id,
         Employee: rec.employee_name,
         Department: rec.departments?.name,
         Date: rec.work_date,
