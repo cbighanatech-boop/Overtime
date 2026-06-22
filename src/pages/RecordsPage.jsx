@@ -423,28 +423,27 @@ export const RecordsPage = () => {
           </div>
         </div>
 
-        {/* Clear Filters indicator */}
-        {(searchText || selectedStatus || selectedDept || startDate || endDate) && (
-          <div className="flex justify-end pt-1 gap-3">
-                <button
-                  type="button"
-                  onClick={exportRecords}
-                  disabled={exportLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-md text-xs font-bold transition-colors disabled:opacity-50"
-                >
-                  <FileSpreadsheet size={14} />
-                  <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
-                </button>
-                <button
-                  onClick={handleClearFilters}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#DC2626] font-bold hover:underline"
-                >
-                  <XCircle size={14} />
-                  <span>Clear Active Filters</span>
-                </button>
-
-          </div>
-        )}
+        {/* Export & Clear Filters actions */}
+        <div className="flex justify-end pt-1 gap-3">
+          <button
+            type="button"
+            onClick={exportRecords}
+            disabled={exportLoading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-md text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            <FileSpreadsheet size={14} />
+            <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
+          </button>
+          {(searchText || selectedStatus || selectedDept || startDate || endDate) && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#DC2626] font-bold hover:underline"
+            >
+              <XCircle size={14} />
+              <span>Clear Active Filters</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* -------------------------------------------------------------
