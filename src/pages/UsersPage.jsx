@@ -155,10 +155,10 @@ export const UsersPage = () => {
     const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
     if (!window.confirm(message)) return
     try {
-      const { error } = await supabase.rpc('assign_user_department', {
-        p_user_id: user.id,
-        p_department_id: departmentId || null
-      })
+      const { error } = await supabase
+        .from('profiles')
+        .update({ department_id: departmentId || null })
+        .eq('id', user.id)
         
       if (error) throw error
       
