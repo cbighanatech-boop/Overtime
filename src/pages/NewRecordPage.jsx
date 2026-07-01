@@ -25,7 +25,7 @@ import {
   CheckCircle2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { isAdmin, isRep } from '../utils/roleHelpers'
+import { isAdmin, isRep, isSupervisor } from '../utils/roleHelpers'
 
 export const NewRecordPage = () => {
   const { profile } = useAuth()
@@ -83,19 +83,26 @@ export const NewRecordPage = () => {
           .eq('role', 'employee')
           .order('full_name')
 
-        // Reps can only capture for colleagues in their own department
-        if (isRep(profile)) {
+        // Reps and Supervisors can only capture for colleagues in their own department
+        if (isRep(profile) || isSupervisor(profile)) {
           query = query.eq('department_id', profile.department_id)
         }
 
         const { data, error } = await query
         if (error) throw error
-        setEmployees(data || [])
-        
-        // Auto-select logged-in user if they are in the returned list
-        const me = data?.find(emp => emp.id === profile.id)
-        if (me) {
-          setSelectedEmployeeIds([me.id])
+        setEmployees(data || []);
+
+        // Auto-select employees based on role
+        if (isRep(profile)) {
+          // For Rep, pre-select all employees in their department
+          const ids = (data || []).map(emp => emp.id);
+          setSelectedEmployeeIds(ids);
+        } else {
+          // Auto-select logged-in user for other roles if present
+          const me = data?.find(emp => emp.id === profile.id);
+          if (me) {
+            setSelectedEmployeeIds([me.id]);
+          }
         }
       } catch (err) {
         console.error("Error loading employees list:", err.message)

@@ -155,11 +155,13 @@ export const UsersPage = () => {
     const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
     if (!window.confirm(message)) return
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ department_id: departmentId || null })
-        .eq('id', user.id)
+      const { error } = await supabase.rpc('assign_user_department', {
+        p_user_id: user.id,
+        p_department_id: departmentId || null
+      })
+        
       if (error) throw error
+      
       toast.success(`${user.full_name} assigned to ${deptName || 'Unassigned'}.`)
       // Update local state
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, departments: departmentId ? { id: departmentId, name: deptName } : null, department_id: departmentId } : u))
@@ -328,7 +330,7 @@ export const UsersPage = () => {
                     <td className="px-6 py-4 font-medium text-gray-600">
                        {profile?.role === 'admin' ? (
                          <select
-                           value={user.departments?.id || ''}
+                           value={user.department_id || ''}
                            onChange={e => handleDepartmentChange(user, e.target.value)}
                            className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
                          >
