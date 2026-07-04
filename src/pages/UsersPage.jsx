@@ -149,22 +149,42 @@ export const UsersPage = () => {
     }
   }
 
-  // Admin can assign department to Rep or Supervisor
+  // Admin can assign department to a user/employee
   const handleDepartmentChange = async (user, departmentId) => {
     const deptName = departments.find(d => d.id === departmentId)?.name || ''
     const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
     if (!window.confirm(message)) return
     try {
-      const { error } = await supabase
+      const { count, error } = await supabase
         .from('profiles')
         .update({ department_id: departmentId || null })
         .eq('id', user.id)
+        .select()
         
       if (error) throw error
-      
+
+      // count === 0 means RLS silently blocked the update — surface it
+      if (count === 0) {
+        throw new Error('Update was blocked. Check Supabase RLS policies for the profiles table.')
+      }
+
+      // Re-fetch the row from DB to confirm the change actually persisted
+      const { data: refreshed, error: fetchErr } = await supabase
+        .from('profiles')
+        .select('*, departments(id, name)')
+        .eq('id', user.id)
+        .single()
+
+      if (fetchErr) throw fetchErr
+
+      // Verify DB reflects the change
+      if (refreshed.department_id !== (departmentId || null)) {
+        throw new Error('Department assignment did not persist in the database.')
+      }
+
       toast.success(`${user.full_name} assigned to ${deptName || 'Unassigned'}.`)
-      // Update local state
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, departments: departmentId ? { id: departmentId, name: deptName } : null, department_id: departmentId } : u))
+      // Update local state with confirmed DB data
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...refreshed } : u))
     } catch (err) {
       console.error('Department assign failed:', err.message)
       toast.error(err.message || 'Failed to assign department.')

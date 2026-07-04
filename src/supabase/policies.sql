@@ -65,7 +65,8 @@ USING (public.get_my_role() = 'admin');
 -- Allow admins to manage (insert, update, delete) all profiles
 CREATE POLICY "Admin manages all profiles"
 ON public.profiles FOR ALL TO authenticated
-USING (public.get_my_role() = 'admin');
+USING (public.get_my_role() = 'admin')
+WITH CHECK (public.get_my_role() = 'admin');
 
 
 -- 5. OVERTIME RECORDS POLICIES
