@@ -155,20 +155,15 @@ export const UsersPage = () => {
     const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
     if (!window.confirm(message)) return
     try {
-      const { count, error } = await supabase
-        .from('profiles')
-        .update({ department_id: departmentId || null })
-        .eq('id', user.id)
-        .select()
-        
+      // Use a SECURITY DEFINER RPC function to bypass RLS
+      const { data, error } = await supabase.rpc('admin_assign_department', {
+        p_user_id: user.id,
+        p_department_id: departmentId || null
+      })
+
       if (error) throw error
 
-      // count === 0 means RLS silently blocked the update — surface it
-      if (count === 0) {
-        throw new Error('Update was blocked. Check Supabase RLS policies for the profiles table.')
-      }
-
-      // Re-fetch the row from DB to confirm the change actually persisted
+      // Re-fetch to confirm it persisted in the DB
       const { data: refreshed, error: fetchErr } = await supabase
         .from('profiles')
         .select('*, departments(id, name)')
@@ -177,13 +172,11 @@ export const UsersPage = () => {
 
       if (fetchErr) throw fetchErr
 
-      // Verify DB reflects the change
       if (refreshed.department_id !== (departmentId || null)) {
-        throw new Error('Department assignment did not persist in the database.')
+        throw new Error('Department assignment did not persist. Please check Supabase logs.')
       }
 
       toast.success(`${user.full_name} assigned to ${deptName || 'Unassigned'}.`)
-      // Update local state with confirmed DB data
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...refreshed } : u))
     } catch (err) {
       console.error('Department assign failed:', err.message)
