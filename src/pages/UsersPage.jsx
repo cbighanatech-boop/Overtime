@@ -62,6 +62,9 @@ export const UsersPage = () => {
 
   useEffect(() => {
     fetchUsers()
+  }, [searchText])
+
+  useEffect(() => {
     // Load departments for admin assignment
     const loadDepartments = async () => {
       const { data, error } = await supabase.from('departments').select('id, name')
@@ -69,7 +72,7 @@ export const UsersPage = () => {
       else setDepartments(data || [])
     }
     loadDepartments()
-  }, [searchText])
+  }, [])
 
   // Admin delete handler with audit logging
   const handleDelete = async (targetUser) => {
@@ -343,6 +346,7 @@ export const UsersPage = () => {
                     <td className="px-6 py-4 font-medium text-gray-600">
                        {profile?.role === 'admin' ? (
                          <select
+                           key={`dept-select-${departments.length}`}
                            value={user.department_id || ''}
                            onChange={e => handleDepartmentChange(user, e.target.value)}
                            className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
