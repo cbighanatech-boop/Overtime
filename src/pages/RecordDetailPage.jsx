@@ -254,7 +254,7 @@ export const RecordDetailPage = () => {
                   </span>
                 )}
                 {adminView && (
-                  <span className="font-semibold text-gray-700">${record.hourly_rate} ({record.rate_multiplier}x)</span>
+                  <span className="font-semibold text-gray-700">GHS {record.hourly_rate} ({record.rate_multiplier}x)</span>
                 )}
                 </div>
               </div>
@@ -269,7 +269,7 @@ export const RecordDetailPage = () => {
                   <span className="text-xs uppercase tracking-wider font-bold">Estimated Session Payout</span>
                 </div>
                 <span className="text-2xl font-[900] text-[#FDB913]">
-                  GH₵{safeCurrency(record?.estimated_payout)}
+                  GHS {safeCurrency(record?.estimated_payout)}
                 </span>
               </div>
             )}

@@ -57,6 +57,14 @@ CREATE POLICY "Users can view own profile"
 ON public.profiles FOR SELECT TO authenticated
 USING (id = auth.uid());
 
+-- Allow Reps and Supervisors to view profiles in their own department
+CREATE POLICY "Reps and Supervisors can view department profiles"
+ON public.profiles FOR SELECT TO authenticated
+USING (
+  public.get_my_role() IN ('rep', 'supervisor') AND
+  department_id = public.get_my_department()
+);
+
 -- Allow admins to view all profiles
 CREATE POLICY "Admin can view all profiles"
 ON public.profiles FOR SELECT TO authenticated

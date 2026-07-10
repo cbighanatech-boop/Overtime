@@ -33,11 +33,48 @@ import {
   Bar,
   Legend
 } from 'recharts'
-import { format, parseISO, startOfMonth } from 'date-fns'
+import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from 'date-fns'
 import { isAdmin, isRep, isSupervisor } from '../utils/roleHelpers'
 
 // Safe tick formatter — prevents Recharts calling toLocaleString() on undefined
 const safeTick = (value) => (value === undefined || value === null ? '' : String(value))
+
+// Format currency with thousand separator and decimal
+const formatCurrency = (value, decimals = 2) => {
+  if (value === undefined || value === null) return `GHS 0.00`
+  return `GHS ${Number(value).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`
+}
+
+// Format number with thousand separator and decimal
+const formatNumber = (value, decimals = 2) => {
+  if (value === undefined || value === null) return `0.${'0'.repeat(decimals)}`
+  return Number(value).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+}
+
+// Get date range based on filter
+const getDateRange = (filter, customRange) => {
+  const today = new Date()
+  let startDate, endDate = endOfDay(today)
+  
+  switch (filter) {
+    case 'month':
+      startDate = startOfDay(startOfMonth(today))
+      break
+    case 'quarter':
+      startDate = startOfDay(subMonths(today, 3))
+      break
+    case 'custom':
+      startDate = new Date(customRange.startDate)
+      endDate = new Date(customRange.endDate)
+      break
+    case 'all':
+    default:
+      startDate = new Date('1970-01-01')
+      break
+  }
+  
+  return { startDate: format(startDate, 'yyyy-MM-dd'), endDate: format(endDate, 'yyyy-MM-dd') }
+}
 
 // Tooltip components defined OUTSIDE the page component to prevent remount crashes
 const CustomTooltip = ({ active, payload, label }) => {
@@ -97,6 +134,15 @@ export const DashboardPage = () => {
   const [statusData, setStatusData] = useState([])
   const [reasonData, setReasonData] = useState([])
   const [trendView, setTrendView] = useState('day') // 'day' | 'month'
+  const [reasonCostData, setReasonCostData] = useState([])
+  const [deptCostData, setDeptCostData] = useState([])
+  
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState('all') // 'all' | 'month' | 'quarter' | 'custom'
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
+    endDate: format(new Date(), 'yyyy-MM-dd')
+  })
 
   const loadDashboardData = async () => {
     if (!profile) return
@@ -113,12 +159,16 @@ export const DashboardPage = () => {
       const { count: empCount } = await employeeQuery
 
       // 2. Overtime records
+      const { startDate, endDate } = getDateRange(dateFilter, customDateRange)
+      
       let recordsQuery = supabase
         .from('overtime_records')
         .select(`
           *,
           departments (name)
         `)
+        .gte('work_date', startDate)
+        .lte('work_date', endDate)
       if (!isAdmin(profile)) {
         recordsQuery = recordsQuery.eq('department_id', profile.department_id)
       }
@@ -135,8 +185,10 @@ export const DashboardPage = () => {
       let highestEmployee = ''
 
       const deptHoursMap = {}
+      const deptCostMap = {}
       const statusHoursMap = { Approved: 0, Pending: 0, Declined: 0 }
       const reasonCountMap = {}
+      const reasonCostMap = {}
       const trendDayMap = {}
       const trendMonthMap = {}
 
@@ -164,6 +216,7 @@ export const DashboardPage = () => {
           // Department groupings
           const deptName = rec.departments?.name || 'Unassigned'
           deptHoursMap[deptName] = (deptHoursMap[deptName] || 0) + hours
+          deptCostMap[deptName] = (deptCostMap[deptName] || 0) + payout
 
           // Status groupings
           if (statusHoursMap[rec.status] !== undefined) {
@@ -173,6 +226,7 @@ export const DashboardPage = () => {
           // Reason groupings
           const reason = rec.reason || 'Others'
           reasonCountMap[reason] = (reasonCountMap[reason] || 0) + 1
+          reasonCostMap[reason] = (reasonCostMap[reason] || 0) + payout
 
           // Day trend
           try {
@@ -241,6 +295,22 @@ export const DashboardPage = () => {
       })).sort((a, b) => b.count - a.count)
       setReasonData(compiledReason)
 
+      // Cost by Reason chart
+      const compiledReasonCost = Object.keys(reasonCostMap).map(reason => ({
+        name: reason,
+        cost: Number(reasonCostMap[reason].toFixed(2)),
+        color: REASON_COLORS[reason] || '#A78BFA'
+      })).sort((a, b) => b.cost - a.cost)
+      setReasonCostData(compiledReasonCost)
+
+      // Cost by Department chart
+      const compiledDeptCost = Object.keys(deptCostMap).map((dept, idx) => ({
+        name: dept,
+        cost: Number(deptCostMap[dept].toFixed(2)),
+        color: GREEN_SHADES[idx % GREEN_SHADES.length]
+      })).sort((a, b) => b.cost - a.cost)
+      setDeptCostData(compiledDeptCost)
+
     } catch (err) {
       console.error('Error loading dashboard metrics:', err.message)
     } finally {
@@ -257,7 +327,7 @@ export const DashboardPage = () => {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [profile])
+  }, [profile, dateFilter, customDateRange])
 
   // Loading skeleton
   if (loading) {
@@ -321,6 +391,80 @@ export const DashboardPage = () => {
         </div>
       </div>
 
+      {/* ── Date Filter Section ── */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h4 className="text-sm font-bold text-[#006939] uppercase tracking-wider mb-4">Filter by Period</h4>
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Quick filter buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDateFilter('all')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'all'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Time
+            </button>
+            <button
+              onClick={() => setDateFilter('month')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'month'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setDateFilter('quarter')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'quarter'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Last 3 Months
+            </button>
+            <button
+              onClick={() => setDateFilter('custom')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'custom'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Custom Range
+            </button>
+          </div>
+
+          {/* Custom date range inputs */}
+          {dateFilter === 'custom' && (
+            <div className="flex gap-3 items-end">
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                <input
+                  type="date"
+                  value={customDateRange.startDate}
+                  onChange={(e) => setCustomDateRange({ ...customDateRange, startDate: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#006939]"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                <input
+                  type="date"
+                  value={customDateRange.endDate}
+                  onChange={(e) => setCustomDateRange({ ...customDateRange, endDate: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#006939]"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── ROW 1: Primary KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
@@ -333,7 +477,7 @@ export const DashboardPage = () => {
                 {isRep(profile) ? 'Department Overtime' : 'Total Overtime'}
               </p>
               <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">
-                {metrics.totalHours} <span className="text-xs font-bold text-gray-400">HRS</span>
+                {formatNumber(metrics.totalHours, 1)} <span className="text-xs font-bold text-gray-400">HRS</span>
               </h3>
             </div>
             <div className="p-3 bg-[#E8F5EE] rounded-xl text-[#006939] shrink-0">
@@ -383,7 +527,7 @@ export const DashboardPage = () => {
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Captured Entries</p>
                 <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">
-                  {metrics.capturedCount} <span className="text-xs text-gray-400">({metrics.myHours} Hrs)</span>
+                  {metrics.capturedCount} <span className="text-xs text-gray-400">({formatNumber(metrics.myHours, 1)} Hrs)</span>
                 </h3>
               </div>
               <div className="p-3 bg-blue-50 rounded-xl text-blue-600 shrink-0">
@@ -399,7 +543,7 @@ export const DashboardPage = () => {
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Est. Total Payout</p>
                 <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">
-                  GH₵{(metrics.estimatedPayout || 0).toFixed(2)}
+                  {formatCurrency(metrics.estimatedPayout || 0)}
                 </h3>
               </div>
               <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600 shrink-0">
@@ -425,7 +569,7 @@ export const DashboardPage = () => {
           <div>
             <p className="text-xs text-white/60 font-bold uppercase tracking-widest">Avg. Overtime / Record</p>
             <p className="text-4xl font-[900] text-white mt-1 tracking-tight">
-              {metrics.avgHours}
+              {formatNumber(metrics.avgHours, 1)}
               <span className="text-sm font-bold text-white/60 ml-1">HRS</span>
             </p>
             <p className="text-xs text-white/50 mt-1">Mean hours across all overtime entries.</p>
@@ -443,7 +587,7 @@ export const DashboardPage = () => {
           <div>
             <p className="text-xs text-[#004D2A]/70 font-bold uppercase tracking-widest">Highest Single Record</p>
             <p className="text-4xl font-[900] text-[#004D2A] mt-1 tracking-tight">
-              {metrics.highestHours}
+              {formatNumber(metrics.highestHours, 1)}
               <span className="text-sm font-bold text-[#004D2A]/60 ml-1">HRS</span>
             </p>
             <p className="text-xs text-[#004D2A]/60 mt-1 truncate max-w-[180px]">
@@ -689,7 +833,115 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      {/* ── ROW 5: Quick Link to Registry ── */}
+      {/* ── ROW 5: Cost Analysis (Admin Only) ── */}
+      {isAdmin(profile) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Cost by Reason Chart */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
+            <div className="mb-5">
+              <h4 className="text-md font-bold text-[#006939] uppercase tracking-wider font-sans flex items-center gap-2">
+                <DollarSign size={16} />
+                Cost by Reason
+              </h4>
+              <p className="text-xs text-gray-400 mt-0.5">Estimated payout breakdown by overtime reason</p>
+            </div>
+
+            {reasonCostData.length > 0 ? (
+              <>
+                <div className="h-[240px] w-full mb-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={reasonCostData.map(d => ({ name: d.name, Cost: d.cost, color: d.color }))}
+                      margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+                      barSize={36}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={safeTick} />
+                      <Tooltip formatter={(value) => [formatCurrency(value), 'Cost']} />
+                      <Bar dataKey="Cost" radius={[6, 6, 0, 0]}>
+                        {reasonCostData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {reasonCostData.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                        <span className="truncate text-gray-600 font-medium max-w-[140px]">{item.name}</span>
+                      </div>
+                      <span className="font-bold text-gray-800 ml-2 shrink-0">{formatCurrency(item.cost)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2">
+                <FolderOpen size={40} className="text-gray-300" />
+                <p className="text-sm">No cost data yet.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Cost by Department Chart */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
+            <div className="mb-5">
+              <h4 className="text-md font-bold text-[#006939] uppercase tracking-wider font-sans flex items-center gap-2">
+                <DollarSign size={16} />
+                Cost by Department
+              </h4>
+              <p className="text-xs text-gray-400 mt-0.5">Total estimated payout per department</p>
+            </div>
+
+            {deptCostData.length > 0 ? (
+              <>
+                <div className="h-[240px] w-full mb-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={deptCostData.map(d => ({ name: d.name, Cost: d.cost, color: d.color }))}
+                      margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+                      barSize={36}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={safeTick} />
+                      <Tooltip formatter={(value) => [formatCurrency(value), 'Cost']} />
+                      <Bar dataKey="Cost" radius={[6, 6, 0, 0]}>
+                        {deptCostData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {deptCostData.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                        <span className="truncate text-gray-600 font-medium max-w-[140px]">{item.name}</span>
+                      </div>
+                      <span className="font-bold text-gray-800 ml-2 shrink-0">{formatCurrency(item.cost)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2">
+                <FolderOpen size={40} className="text-gray-300" />
+                <p className="text-sm">No cost data yet.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── ROW 6: Quick Link to Registry ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
           <div>

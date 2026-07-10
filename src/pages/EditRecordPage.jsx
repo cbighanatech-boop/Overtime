@@ -76,9 +76,9 @@ export const EditRecordPage = () => {
         // Prepopulate form state
         setRecordOwnerName(data.employee_name || 'N/A')
         setRecordOwnerDept(data.departments?.name || 'N/A')
-        setDate(data.date)
-        setTimeIn(data.time_in.slice(0, 5)) // Format to HH:MM
-        setTimeOut(data.time_out.slice(0, 5))
+        setDate(data.work_date || '')
+        setTimeIn(data.time_in?.slice(0, 5) || '') // Format to HH:MM
+        setTimeOut(data.time_out?.slice(0, 5) || '')
         setHourlyRate(String(data.hourly_rate))
         setRateMultiplier(String(data.rate_multiplier))
         setDescription(data.description);
@@ -157,7 +157,7 @@ export const EditRecordPage = () => {
       const { error } = await supabase
         .from('overtime_records')
         .update({
-          date,
+          work_date: date,
           time_in: timeIn,
           time_out: timeOut,
           hourly_rate: Number(hourlyRate),
@@ -169,7 +169,7 @@ export const EditRecordPage = () => {
 
       if (error) throw error
 
-      toast.success("Overtime record updated successfully!")
+      toast.success("Overtime record updated successfully! Changes take effect immediately.")
       navigate(`/records/${id}`)
     } catch (err) {
       console.error("Update failed:", err.message)
@@ -282,7 +282,7 @@ export const EditRecordPage = () => {
               <div>
                 <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <DollarSign size={14} />
-                  <span>Hourly Rate ($)</span>
+                  <span>Hourly Rate (GHS)</span>
                 </label>
                 <input
                   type="number"
@@ -338,7 +338,7 @@ export const EditRecordPage = () => {
                 <div className="border-l border-white/20 pl-6 sm:pl-8">
                   <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Est. Payout</p>
                   <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                    ${safeCurrency(livePayout)}
+                    GHS {safeCurrency(livePayout)}
                   </p>
                 </div>
               )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { 
   FolderTree, 
@@ -11,7 +12,8 @@ import {
   Save, 
   Users, 
   FileText,
-  Loader2
+  Loader2,
+  Eye
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -236,6 +238,13 @@ export const DepartmentsPage = () => {
                   </span>
                   
                   <div className="flex items-center gap-1.5">
+                    <Link
+                      to={`/departments/${dept.id}`}
+                      className="p-1.5 rounded-md hover:bg-blue-50 text-blue-500 hover:text-blue-600 transition-colors"
+                      title="View Department Staff"
+                    >
+                      <Eye size={14} />
+                    </Link>
                     <button
                       onClick={() => handleOpenEdit(dept)}
                       className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-[#006939] transition-colors"

@@ -14,6 +14,7 @@ import UsersPage from '../pages/UsersPage'
 import NewUserPage from '../pages/NewUserPage'
 import NewEmployeePage from '../pages/NewEmployeePage'
 import DepartmentsPage from '../pages/DepartmentsPage'
+import DepartmentDetailsPage from '../pages/DepartmentDetailsPage'
 import AuditTrailPage from '../pages/AuditTrailPage' // New import
 
 // Import PageWrapper
@@ -128,6 +129,16 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <DepartmentsPage />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Department Details - Admin only */}
+        <Route 
+          path="/departments/:id" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <DepartmentDetailsPage />
             </ProtectedRoute>
           } 
         />

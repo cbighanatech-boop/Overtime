@@ -80,7 +80,6 @@ export const NewRecordPage = () => {
             )
           `)
           .eq('is_active', true)
-          .eq('role', 'employee')
           .order('full_name')
 
         // Reps and Supervisors can only capture for colleagues in their own department
@@ -480,7 +479,7 @@ export const NewRecordPage = () => {
               <div>
                 <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <DollarSign size={14} />
-                  <span>Hourly Rate ($)</span>
+                  <span>Hourly Rate (GHS)</span>
                 </label>
                 <input
                   type="number"
@@ -537,13 +536,13 @@ export const NewRecordPage = () => {
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
                     <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Payout / Employee</p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                      ${safeCurrency(livePayout)}
+                      GHS {safeCurrency(livePayout)}
                     </p>
                   </div>
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
                     <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Total Bulk Cost</p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                      ${safeCurrency(livePayout * selectedEmployeeIds.length)}
+                      GHS {safeCurrency(livePayout * selectedEmployeeIds.length)}
                     </p>
                   </div>
                 </>
