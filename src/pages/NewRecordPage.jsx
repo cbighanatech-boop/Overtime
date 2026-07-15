@@ -42,7 +42,7 @@ export const NewRecordPage = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [timeIn, setTimeIn] = useState('08:00')
   const [timeOut, setTimeOut] = useState('17:00')
-  const [hourlyRate, setHourlyRate] = useState('25.00')
+  const [hourlyRate, setHourlyRate] = useState('')
   const [rateMultiplier, setRateMultiplier] = useState('1.5')
   const [description, setDescription] = useState('')
   const [reason, setReason] = useState('Holiday')
@@ -288,7 +288,7 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          hourly_rate: Number(hourlyRate),
+          hourly_rate: hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 25),
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: livePayout,
           description: description.trim(),
@@ -303,6 +303,18 @@ export const NewRecordPage = () => {
         .insert(rows)
 
       if (error) throw error
+
+      if (isAdmin(profile) && hourlyRate && Number(hourlyRate) > 0) {
+        // Admin explicitly set a rate, so make it the new default for selected employees
+        const staffIdsToUpdate = rows.map(r => r.employee_id)
+        if (staffIdsToUpdate.length > 0) {
+          const { error: rateErr } = await supabase
+            .from('profiles')
+            .update({ hourly_rate: Number(hourlyRate) })
+            .in('staff_id', staffIdsToUpdate)
+          if (rateErr) console.error("Rate default update failed:", rateErr.message)
+        }
+      }
 
       await logActivity('Created Overtime Entry', { selectedEmployeeIds, date, description, reason });
         toast.success(`Overtime captured successfully for ${selectedEmployeeIds.length} employee(s)!`);
@@ -515,11 +527,11 @@ export const NewRecordPage = () => {
                   type="number"
                   step="0.01"
                   min="0.01"
-                  required
+                  required={false}
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
                   className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all"
-                  placeholder="25.00"
+                  placeholder="Leave empty to use employee default"
                   disabled={submitting}
                 />
               </div>

@@ -197,9 +197,8 @@ export const EditRecordPage = () => {
         })
         .eq('id', id)
 
-      // Only update the employee's stored hourly rate for current/future-dated records
-      const today = new Date().toISOString().split('T')[0]
-      if (isAdmin(profile) && nextRate > 0 && recordEmployeeId && date >= today) {
+      // Update the employee's stored hourly rate to become the new default going forward
+      if (isAdmin(profile) && nextRate > 0 && recordEmployeeId) {
         const { error: employeeError } = await supabase
           .from('profiles')
           .update({ hourly_rate: nextRate })
