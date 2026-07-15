@@ -33,12 +33,14 @@ export const EditRecordPage = () => {
   const [submitting, setSubmitting] = useState(false)
   const [recordOwnerName, setRecordOwnerName] = useState('')
   const [recordOwnerDept, setRecordOwnerDept] = useState('')
+  const [recordEmployeeId, setRecordEmployeeId] = useState('')
 
   // Form Fields State
   const [date, setDate] = useState('')
   const [timeIn, setTimeIn] = useState('')
   const [timeOut, setTimeOut] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
+  const [recordDate, setRecordDate] = useState('')
   const [rateMultiplier, setRateMultiplier] = useState('')
   const [description, setDescription] = useState('')
   const [reason, setReason] = useState('Holiday')
@@ -76,7 +78,9 @@ export const EditRecordPage = () => {
         // Prepopulate form state
         setRecordOwnerName(data.employee_name || 'N/A')
         setRecordOwnerDept(data.departments?.name || 'N/A')
+        setRecordEmployeeId(data.employee_id || '')
         setDate(data.work_date || '')
+        setRecordDate(data.work_date || '')
         setTimeIn(data.time_in?.slice(0, 5) || '') // Format to HH:MM
         setTimeOut(data.time_out?.slice(0, 5) || '')
         setHourlyRate(String(data.hourly_rate))
@@ -154,6 +158,32 @@ export const EditRecordPage = () => {
 
     setSubmitting(true)
     try {
+      const selectedDate = new Date(`${date}T${timeIn}:00`)
+      const targetTime = selectedDate.toISOString()
+      const { data: blockedWindows, error: blockLookupError } = await supabase
+        .from('admin_entry_blocks')
+        .select('id, reason, company, department_id')
+        .lte('start_at', targetTime)
+        .gte('end_at', targetTime)
+
+      if (blockLookupError) throw blockLookupError
+
+      if (blockedWindows?.length > 0) {
+        // Fetch the target employee's company to check scope
+        const { data: empData } = await supabase.from('profiles').select('company, department_id').eq('id', recordEmployeeId).single()
+        
+        for (const block of blockedWindows) {
+          const companyMatch = !block.company || block.company === empData?.company
+          const deptMatch = !block.department_id || block.department_id === empData?.department_id
+          if (companyMatch && deptMatch) {
+            toast.error(`Entry submission is blocked for this time window: ${block.reason}`)
+            return
+          }
+        }
+      }
+
+      const currentDate = recordDate || date
+      const nextRate = Number(hourlyRate)
       const { error } = await supabase
         .from('overtime_records')
         .update({
@@ -166,6 +196,17 @@ export const EditRecordPage = () => {
           description: description.trim()
         })
         .eq('id', id)
+
+      // Only update the employee's stored hourly rate for current/future-dated records
+      const today = new Date().toISOString().split('T')[0]
+      if (isAdmin(profile) && nextRate > 0 && recordEmployeeId && date >= today) {
+        const { error: employeeError } = await supabase
+          .from('profiles')
+          .update({ hourly_rate: nextRate })
+          .eq('staff_id', recordEmployeeId)
+
+        if (employeeError) throw employeeError
+      }
 
       if (error) throw error
 

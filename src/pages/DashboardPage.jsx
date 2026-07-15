@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase/client'
+import toast from 'react-hot-toast'
 import { 
   TrendingUp, 
   Users, 
@@ -16,7 +17,10 @@ import {
   Award,
   Sigma,
   CalendarDays,
-  Tag
+  Tag,
+  ShieldBan,
+  Trash2,
+  Loader2
 } from 'lucide-react'
 import { 
   AreaChart, 
@@ -34,7 +38,7 @@ import {
   Legend
 } from 'recharts'
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from 'date-fns'
-import { isAdmin, isRep, isSupervisor } from '../utils/roleHelpers'
+import { isAdmin, isRep, isSupervisor, canEditRecord, canReviewRecord, isReviewTimedOut } from '../utils/roleHelpers'
 
 // Safe tick formatter — prevents Recharts calling toLocaleString() on undefined
 const safeTick = (value) => (value === undefined || value === null ? '' : String(value))
@@ -143,6 +147,168 @@ export const DashboardPage = () => {
     startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd')
   })
+  const [blockStart, setBlockStart] = useState('')
+  const [blockEnd, setBlockEnd] = useState('')
+  const [blockReason, setBlockReason] = useState('')
+  const [blockCompany, setBlockCompany] = useState('')
+  const [blockDepartmentId, setBlockDepartmentId] = useState('')
+  const [departments, setDepartments] = useState([])
+  const [timedOutRecords, setTimedOutRecords] = useState([])
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
+  const [blocking, setBlocking] = useState(false)
+  const [activeBlocks, setActiveBlocks] = useState([])
+  const [loadingBlocks, setLoadingBlocks] = useState(false)
+  const [deletingBlockId, setDeletingBlockId] = useState(null)
+
+  // Fetch existing block windows
+  const fetchBlocks = async () => {
+    if (!isAdmin(profile)) return
+    setLoadingBlocks(true)
+    try {
+      const { data, error } = await supabase
+        .from('admin_entry_blocks')
+        .select('*, departments(name)')
+        .order('start_at', { ascending: false })
+      if (error) throw error
+      setActiveBlocks(data || [])
+    } catch (err) {
+      console.error('Failed to load blocks:', err.message)
+    } finally {
+      setLoadingBlocks(false)
+    }
+  }
+
+  const fetchDepartments = async () => {
+    if (!isAdmin(profile)) return
+    const { data } = await supabase.from('departments').select('*').order('name')
+    if (data) setDepartments(data)
+  }
+
+  const fetchTimedOutRecords = async () => {
+    if (!isAdmin(profile)) return
+    setLoadingTimedOut(true)
+    try {
+      // Find pending records that have a review deadline in the past
+      const { data, error } = await supabase
+        .from('overtime_records')
+        .select(`*, departments(name)`)
+        .eq('status', 'Pending')
+        .lt('review_deadline', new Date().toISOString())
+        .order('work_date', { ascending: false })
+      
+      // Also fallback for old records without a review_deadline: 
+      // where captured_at < now() - 7 days
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('overtime_records')
+        .select(`*, departments(name)`)
+        .eq('status', 'Pending')
+        .is('review_deadline', null)
+        .lt('captured_at', sevenDaysAgo)
+        .order('work_date', { ascending: false })
+
+      if (error || fallbackError) throw error || fallbackError
+      
+      const combined = [...(data || []), ...(fallbackData || [])]
+      // deduplicate by id
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values())
+      setTimedOutRecords(unique)
+    } catch (err) {
+      console.error('Failed to load timed out records:', err.message)
+    } finally {
+      setLoadingTimedOut(false)
+    }
+  }
+
+  const handleGrantExtension = async (recordId) => {
+    if (!isAdmin(profile)) return
+    try {
+      // Grant +7 days from now
+      const newDeadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      const { error } = await supabase
+        .from('overtime_records')
+        .update({ review_deadline: newDeadline })
+        .eq('id', recordId)
+      
+      if (error) throw error
+      toast.success('7-day extension granted successfully.')
+      await fetchTimedOutRecords()
+    } catch (err) {
+      console.error('Extension failed:', err.message)
+      toast.error(err.message || 'Failed to grant extension.')
+    }
+  }
+
+  const handleBlockEntries = async (e) => {
+    e.preventDefault()
+    if (!isAdmin(profile)) return
+    if (!blockStart || !blockEnd) {
+      toast.error('Please choose both start and end dates and times.')
+      return
+    }
+    if (new Date(blockEnd) <= new Date(blockStart)) {
+      toast.error('End date/time must be after start date/time.')
+      return
+    }
+
+    setBlocking(true)
+    try {
+      const payload = {
+        start_at: blockStart,
+        end_at: blockEnd,
+        reason: blockReason.trim() || 'Admin block',
+        created_by: profile.id,
+      }
+      if (blockCompany) payload.company = blockCompany
+      if (blockDepartmentId) payload.department_id = blockDepartmentId
+
+      const { error } = await supabase.from('admin_entry_blocks').insert(payload)
+
+      if (error) throw error
+
+      toast.success('Entry blocking window saved successfully.')
+      setBlockStart('')
+      setBlockEnd('')
+      setBlockReason('')
+      setBlockCompany('')
+      setBlockDepartmentId('')
+      await fetchBlocks()
+    } catch (err) {
+      console.error('Failed to create block:', err.message)
+      toast.error(err.message || 'Failed to save blocking window.')
+    } finally {
+      setBlocking(false)
+    }
+  }
+
+  const handleDeleteBlock = async (blockId) => {
+    if (!isAdmin(profile)) return
+    setDeletingBlockId(blockId)
+    try {
+      const { error } = await supabase
+        .from('admin_entry_blocks')
+        .delete()
+        .eq('id', blockId)
+      if (error) throw error
+      toast.success('Block window removed.')
+      await fetchBlocks()
+    } catch (err) {
+      console.error('Delete block failed:', err.message)
+      toast.error(err.message || 'Failed to remove block window.')
+    } finally {
+      setDeletingBlockId(null)
+    }
+  }
+
+  // Helper to determine block status
+  const getBlockStatus = (block) => {
+    const now = new Date()
+    const start = new Date(block.start_at)
+    const end = new Date(block.end_at)
+    if (now >= start && now <= end) return 'active'
+    if (now < start) return 'upcoming'
+    return 'expired'
+  }
 
   const loadDashboardData = async () => {
     if (!profile) return
@@ -320,6 +486,11 @@ export const DashboardPage = () => {
 
   useEffect(() => {
     loadDashboardData()
+    if (isAdmin(profile)) {
+      fetchBlocks()
+      fetchDepartments()
+      fetchTimedOutRecords()
+    }
     const channel = supabase
       .channel('live-dashboard-records')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'overtime_records' }, () => {
@@ -327,7 +498,7 @@ export const DashboardPage = () => {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [profile, dateFilter, customDateRange])
+  }, [profile, dateFilter, customDateRange.startDate, customDateRange.endDate])
 
   // Loading skeleton
   if (loading) {
@@ -464,6 +635,243 @@ export const DashboardPage = () => {
           )}
         </div>
       </div>
+
+      {/* ── ADMIN: Block Entries Panel ── */}
+      {isAdmin(profile) && (
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2.5 bg-red-50 rounded-xl">
+              <ShieldBan size={20} className="text-red-600" />
+            </div>
+            <div>
+              <h4 className="text-md font-bold text-[#006939] uppercase tracking-wider font-sans">Block Entries</h4>
+              <p className="text-xs text-gray-400 mt-0.5">Prevent all users from submitting overtime entries during a specified period.</p>
+            </div>
+          </div>
+
+            <form onSubmit={handleBlockEntries} className="bg-gray-50 rounded-xl border border-gray-100 p-5 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Start Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={blockStart}
+                    onChange={(e) => setBlockStart(e.target.value)}
+                    required
+                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                    disabled={blocking}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={blockEnd}
+                    onChange={(e) => setBlockEnd(e.target.value)}
+                    required
+                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                    disabled={blocking}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Company (Optional)</label>
+                  <select
+                    value={blockCompany}
+                    onChange={(e) => setBlockCompany(e.target.value)}
+                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                    disabled={blocking}
+                  >
+                    <option value="">All Companies</option>
+                    <option value="CBI">CBI</option>
+                    <option value="Abanach">Abanach</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Department (Optional)</label>
+                  <select
+                    value={blockDepartmentId}
+                    onChange={(e) => setBlockDepartmentId(e.target.value)}
+                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all"
+                    disabled={blocking}
+                  >
+                    <option value="">All Departments</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lg:col-span-1">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Reason</label>
+                  <input
+                    type="text"
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    placeholder="e.g. Payroll"
+                    className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all placeholder-gray-400"
+                    disabled={blocking}
+                  />
+                </div>
+                <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={blocking}
+                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                  {blocking ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldBan size={15} />
+                      <span>Block Period</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Existing block windows list */}
+          {loadingBlocks ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={20} className="animate-spin text-gray-400" />
+            </div>
+          ) : activeBlocks.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Status</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">From</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">To</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Scope</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Reason</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Created</th>
+                    <th className="text-center px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100 w-16"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeBlocks.map((block) => {
+                    const status = getBlockStatus(block)
+                    return (
+                      <tr key={block.id} className={`border-b border-gray-50 transition-colors ${
+                        status === 'active' ? 'bg-red-50/50' : status === 'upcoming' ? 'bg-amber-50/30' : 'hover:bg-gray-50'
+                      }`}>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            status === 'active'
+                              ? 'bg-red-100 text-red-700'
+                              : status === 'upcoming'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              status === 'active' ? 'bg-red-500 animate-pulse' : status === 'upcoming' ? 'bg-amber-500' : 'bg-gray-400'
+                            }`}></span>
+                            {status === 'active' ? 'Active' : status === 'upcoming' ? 'Upcoming' : 'Expired'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 font-medium text-gray-700">
+                          {format(new Date(block.start_at), 'dd MMM yyyy, HH:mm')}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-gray-700">
+                          {format(new Date(block.end_at), 'MMM dd, HH:mm')}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-700">
+                          {block.company || 'All'} {block.departments?.name ? `/ ${block.departments.name}` : ''}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-700 truncate max-w-[200px]" title={block.reason}>
+                          {block.reason}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-400">
+                          {format(new Date(block.created_at), 'dd MMM yyyy')}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button
+                            onClick={() => handleDeleteBlock(block.id)}
+                            disabled={deletingBlockId === block.id}
+                            className="p-1.5 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                            title="Remove block"
+                          >
+                            {deletingBlockId === block.id ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-5 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <ShieldBan size={24} className="text-gray-300 mx-auto mb-2" />
+              <p className="font-medium">No active blocking windows.</p>
+              <p className="mt-0.5">Create one above to restrict overtime entry submissions.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ADMIN: Timed Out Records Panel ── */}
+      {isAdmin(profile) && (
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2.5 bg-orange-50 rounded-xl">
+              <Clock size={20} className="text-orange-600" />
+            </div>
+            <div>
+              <h4 className="text-md font-bold text-[#006939] uppercase tracking-wider font-sans">Timed Out Records ({timedOutRecords.length})</h4>
+              <p className="text-xs text-gray-400 mt-0.5">Records that have passed their 7-day supervisor review window. Grant extensions to allow review.</p>
+            </div>
+          </div>
+
+          {loadingTimedOut ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={20} className="animate-spin text-gray-400" />
+            </div>
+          ) : timedOutRecords.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Employee</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Department</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Shift Date</th>
+                    <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Captured At</th>
+                    <th className="text-center px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timedOutRecords.map((rec) => (
+                    <tr key={rec.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2.5 font-medium">{rec.employee_name}</td>
+                      <td className="px-3 py-2.5 text-gray-500">{rec.departments?.name}</td>
+                      <td className="px-3 py-2.5 text-gray-600">{format(parseISO(rec.work_date), 'MMM dd, yyyy')}</td>
+                      <td className="px-3 py-2.5 text-gray-500">{format(new Date(rec.captured_at), 'MMM dd, HH:mm')}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button
+                          onClick={() => handleGrantExtension(rec.id)}
+                          className="px-3 py-1 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-md text-xs font-bold transition-colors"
+                        >
+                          +7 Days
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 text-center py-4">No timed out records pending review.</p>
+          )}
+        </div>
+      )}
 
       {/* ── ROW 1: Primary KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -75,6 +75,7 @@ export const NewRecordPage = () => {
             staff_id,
             category,
             department_id,
+            company,
             departments (
               name
             )
@@ -232,6 +233,35 @@ export const NewRecordPage = () => {
     if (selectedEmployeeIds.length === 0) {
       toast.error("Please select at least one employee.")
       return
+    }
+
+    const targetDateTime = new Date(`${date}T${timeIn}:00`).toISOString()
+    const { data: blockedWindows, error: blockLookupError } = await supabase
+      .from('admin_entry_blocks')
+      .select('id, reason, company, department_id')
+      .lte('start_at', targetDateTime)
+      .gte('end_at', targetDateTime)
+
+    if (blockLookupError) {
+      console.error('Block lookup failed:', blockLookupError.message)
+      toast.error('Unable to verify entry restrictions right now.')
+      return
+    }
+
+    if (blockedWindows?.length > 0) {
+      // Check if any selected employee falls into a block
+      for (const block of blockedWindows) {
+        const affectedEmployees = employees.filter(emp => selectedEmployeeIds.includes(emp.id)).filter(emp => {
+          const companyMatch = !block.company || block.company === emp.company
+          const deptMatch = !block.department_id || block.department_id === emp.department_id
+          return companyMatch && deptMatch
+        })
+        
+        if (affectedEmployees.length > 0) {
+          toast.error(`Entry blocked for some selected employees: ${block.reason}`)
+          return
+        }
+      }
     }
     if (liveHours <= 0) {
       toast.error("Invalid overtime duration: Hours must be greater than zero.")

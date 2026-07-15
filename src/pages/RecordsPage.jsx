@@ -15,12 +15,13 @@ import {
   CheckSquare, 
   PlusCircle, 
   Calendar,
+  Clock,
   XCircle,
   FileSpreadsheet,
   FolderOpen
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { canEditRecord, canDeleteRecord, canReviewRecord, canSelectRecord } from '../utils/roleHelpers'
+import { canEditRecord, canDeleteRecord, canReviewRecord, canSelectRecord, isReviewTimedOut } from '../utils/roleHelpers'
 import ReviewModal from '../components/records/ReviewModal'
 import BulkReviewModal from '../components/records/BulkReviewModal'
 import toast from 'react-hot-toast'
@@ -272,7 +273,8 @@ export const RecordsPage = () => {
   }
 
   // Status Badge styles (Strict brand contrast rules)
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (rec) => {
+    const status = rec.status
     switch (status) {
       case 'Approved':
         return (
@@ -281,6 +283,14 @@ export const RecordsPage = () => {
           </span>
         )
       case 'Pending':
+        if (isReviewTimedOut(rec)) {
+          return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 border border-orange-300">
+              <Clock size={12} />
+              Timed Out
+            </span>
+          )
+        }
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#92400E] border border-[#D97706] shimmer-subtle">
             Pending
@@ -537,7 +547,7 @@ export const RecordsPage = () => {
                     
                     {/* Status Badge */}
                     <td className="px-6 py-4">
-                      {getStatusBadge(rec.status)}
+                      {getStatusBadge(rec)}
                     </td>
                     
                     {/* Description cell */}

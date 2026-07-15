@@ -59,27 +59,47 @@ export const canDeleteUser = (profile) => {
 /**
  * Determines if a user can approve/decline a specific record
  * - Admin: Can review ANY record (including reversing previous reviews)
- * - Supervisor: Can review ONLY 'Pending' records in their department
+ * - Supervisor: Can review ONLY 'Pending' records in their department (and not timed out)
  * - Rep: Cannot review records
  */
 export const canReviewRecord = (profile, record) => {
   if (!profile || !record) return false
   if (isAdmin(profile)) return true
   if (isSupervisor(profile)) {
-    return record.status === 'Pending' && record.department_id === profile.department_id
+    if (record.status !== 'Pending') return false
+    if (record.department_id !== profile.department_id) return false
+    if (isReviewTimedOut(record)) return false
+    return true
   }
   return false
 }
 
 /**
+ * Checks if a pending record has passed its 7-day review deadline
+ */
+export const isReviewTimedOut = (record) => {
+  if (record.status !== 'Pending') return false
+  const deadline = record.review_deadline 
+    ? new Date(record.review_deadline) 
+    : new Date(new Date(record.captured_at).getTime() + 7 * 24 * 60 * 60 * 1000)
+  return new Date() > deadline
+}
+
+/**
  * Determines if a user can select a record for bulk actions
  * - Admin: can select any
- * - Supervisor: can select any (they can review any pending records, but for bulk we allow same as review)
+ * - Supervisor: can select pending records in their department (not timed out)
  * - Rep: can select records that are pending and within their department
  */
 export const canSelectRecord = (profile, record) => {
   if (!profile || !record) return false
-  if (isAdmin(profile) || isSupervisor(profile)) return true
+  if (isAdmin(profile)) return true
+  if (isSupervisor(profile)) {
+    if (record.status !== 'Pending') return false
+    if (record.department_id !== profile.department_id) return false
+    if (isReviewTimedOut(record)) return false
+    return true
+  }
   if (isRep(profile)) {
     return record.status === 'Pending' && record.department_id === profile.department_id
   }

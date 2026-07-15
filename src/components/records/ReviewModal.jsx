@@ -3,7 +3,7 @@ import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { X, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { isAdmin, canDeleteRecord, canReviewRecord } from '../../utils/roleHelpers'
+import { isAdmin, canDeleteRecord, canReviewRecord, isReviewTimedOut, isSupervisor } from '../../utils/roleHelpers'
 
 
 export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
@@ -86,6 +86,19 @@ export const ReviewModal = ({ isOpen, onClose, record, onSuccess }) => {
                 <p className="font-bold">Admin Override Mode</p>
                 <p className="mt-0.5 text-xs text-amber-700">
                   This record is currently <strong>{record.status}</strong>. As an Admin, you are overriding the status.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Supervisor Timeout Warning */}
+          {isReviewTimedOut(record) && isSupervisor(profile) && (
+            <div className="flex gap-3 bg-red-50 border border-red-200 p-4 rounded-xl text-red-800 text-sm">
+              <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+              <div>
+                <p className="font-bold">Review Window Expired</p>
+                <p className="mt-0.5 text-xs text-red-700">
+                  The 7-day review window for this entry has expired. Please contact an admin to request an extension.
                 </p>
               </div>
             </div>

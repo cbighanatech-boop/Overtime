@@ -25,20 +25,23 @@ import toast from 'react-hot-toast'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const VALID_CATEGORIES = ['Shift', 'Straight Day']
-const TEMPLATE_HEADERS = ['full_name', 'staff_id', 'position', 'category']
+const VALID_COMPANIES = ['CBI', 'Abanach']
+const TEMPLATE_HEADERS = ['full_name', 'staff_id', 'position', 'category', 'department', 'company']
 const TEMPLATE_SAMPLE = [
-  { full_name: 'Jane Doe', staff_id: 'CBI-010', position: 'Plant Operator', category: 'Shift' },
-  { full_name: 'Kweku Asante', staff_id: 'CBI-011', position: 'Technician', category: 'Straight Day' },
+  { full_name: 'Jane Doe', staff_id: 'CBI-010', position: 'Plant Operator', category: 'Shift', department: 'Operations', company: 'CBI' },
+  { full_name: 'Kweku Asante', staff_id: 'CBI-011', position: 'Technician', category: 'Straight Day', department: 'Maintenance', company: 'Abanach' },
 ]
 
 // ─── Helper: validate a single parsed row ─────────────────────────────────
-function validateRow(row, index, existingStaffIds, seenInBatch) {
+function validateRow(row, index, existingStaffIds, seenInBatch, departments = [], fallbackDepartmentId = '') {
   const errors = []
 
   const fullName = String(row.full_name || '').trim()
   const staffId = String(row.staff_id || '').trim()
   const position = String(row.position || '').trim()
   const category = String(row.category || '').trim()
+  const departmentName = String(row.department || '').trim()
+  const company = String(row.company || '').trim().toUpperCase()
 
   if (!fullName) errors.push('Full name is required')
   if (!staffId) {
@@ -53,12 +56,27 @@ function validateRow(row, index, existingStaffIds, seenInBatch) {
     errors.push(`Category must be "Shift" or "Straight Day" (got "${category || 'empty'}")`)
   }
 
+  const resolvedDepartment = departmentName
+    ? departments.find((dept) => dept.name?.toLowerCase() === departmentName.toLowerCase())
+    : null
+
+  if (departmentName && !resolvedDepartment) {
+    errors.push(`Department "${departmentName}" was not found in the system`)
+  }
+
+  if (!VALID_COMPANIES.includes(company || '')) {
+    errors.push(`Company must be "CBI" or "Abanach" (got "${company || 'empty'}")`)
+  }
+
   return {
     _rowIndex: index + 1,
     full_name: fullName,
     staff_id: staffId,
     position,
     category,
+    department: departmentName,
+    company: company || 'CBI',
+    _resolvedDepartmentId: resolvedDepartment?.id || fallbackDepartmentId,
     _errors: errors,
     _valid: errors.length === 0,
   }
@@ -81,6 +99,7 @@ export const NewEmployeePage = () => {
   const [fullName, setFullName] = useState('')
   const [staffId, setStaffId] = useState('')
   const [category, setCategory] = useState('Shift')
+  const [company, setCompany] = useState('CBI')
   const [position, setPosition] = useState('')
   const [departmentId, setDepartmentId] = useState('')
 
@@ -140,6 +159,7 @@ export const NewEmployeePage = () => {
         position: position.trim(),
         role: 'employee',
         department_id: departmentId,
+        company: company || 'CBI',
         is_active: true,
       })
       if (profileError) throw profileError
@@ -171,7 +191,7 @@ export const NewEmployeePage = () => {
     const ws = XLSX.utils.aoa_to_sheet(wsData)
 
     // Style column widths
-    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 16 }]
+    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }]
 
     // Add a second info sheet
     const infoData = [
@@ -183,8 +203,10 @@ export const NewEmployeePage = () => {
       ['1. Do NOT modify the header row (row 1).'],
       ['2. Fill one employee per row starting from row 2.'],
       ['3. Category must be exactly: Shift  OR  Straight Day'],
-      ['4. Staff IDs must be unique across the entire system.'],
-      ['5. Save as .xlsx or .csv, then upload in the app.'],
+      ['4. Company must be exactly: CBI  OR  Abanach'],
+      ['5. Department should match an existing department name exactly.'],
+      ['6. Staff IDs must be unique across the entire system.'],
+      ['7. Save as .xlsx or .csv, then upload in the app.'],
     ]
     const wsInfo = XLSX.utils.aoa_to_sheet(infoData)
     wsInfo['!cols'] = [{ wch: 36 }, { wch: 28 }]
@@ -236,8 +258,9 @@ export const NewEmployeePage = () => {
         })
 
         const seenInBatch = new Set()
+        const resolvedDepartmentId = currentUser?.department_id || departmentId
         const validated = normalised.map((row, i) => {
-          const result = validateRow(row, i, existingStaffIds, seenInBatch)
+          const result = validateRow(row, i, existingStaffIds, seenInBatch, departments, resolvedDepartmentId)
           if (result.staff_id) seenInBatch.add(result.staff_id)
           return result
         })
@@ -305,7 +328,8 @@ export const NewEmployeePage = () => {
         position: row.position,
         category: row.category,
         role: 'employee',
-        department_id: repDeptId,
+        department_id: row._resolvedDepartmentId || repDeptId,
+        company: (row.company || 'CBI').toUpperCase(),
         is_active: true,
       }))
 
@@ -461,6 +485,22 @@ export const NewEmployeePage = () => {
                   <option value="Straight Day">Straight Day</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <User size={14} />
+                  <span>Company</span>
+                </label>
+                <select
+                  required
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
+                  disabled={submitting}
+                >
+                  <option value="CBI">CBI</option>
+                  <option value="Abanach">Abanach</option>
+                </select>
+              </div>
             </div>
 
             {/* Department */}
@@ -559,7 +599,7 @@ export const NewEmployeePage = () => {
                   Download the Excel template, fill in your employees, then come back and upload.
                   Required columns:{' '}
                   <span className="font-semibold text-gray-700">
-                    full_name, staff_id, position, category
+                    full_name, staff_id, position, category, department, company
                   </span>
                   .
                 </p>
