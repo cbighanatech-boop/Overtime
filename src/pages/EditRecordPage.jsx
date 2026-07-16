@@ -170,7 +170,7 @@ export const EditRecordPage = () => {
 
       if (blockedWindows?.length > 0) {
         // Fetch the target employee's company to check scope
-        const { data: empData } = await supabase.from('profiles').select('company, department_id').eq('id', recordEmployeeId).single()
+        const { data: empData } = await supabase.from('profiles').select('id, company, department_id').or(`id.eq.${recordEmployeeId},staff_id.eq.${recordEmployeeId}`).single()
         
         for (const block of blockedWindows) {
           const companyMatch = !block.company || block.company === empData?.company
@@ -202,7 +202,7 @@ export const EditRecordPage = () => {
         const { error: employeeError } = await supabase
           .from('profiles')
           .update({ hourly_rate: nextRate })
-          .eq('staff_id', recordEmployeeId)
+          .or(`id.eq.${recordEmployeeId},staff_id.eq.${recordEmployeeId}`)
 
         if (employeeError) throw employeeError
       }

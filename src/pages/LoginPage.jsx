@@ -4,11 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const DEMO_ACCOUNTS = [
-  { label: 'Admin',      email: 'admin@cbi-overtime.com',      role: 'admin',      color: '#006939', textColor: '#fff' },
-  { label: 'Supervisor', email: 'supervisor@cbi-overtime.com', role: 'supervisor', color: '#DBEAFE', textColor: '#1E40AF' },
-  { label: 'Rep',        email: 'rep@cbi-overtime.com',        role: 'rep',        color: '#FDB913', textColor: '#004D2A' },
-]
+
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('')
@@ -159,28 +155,7 @@ export const LoginPage = () => {
           <p className="mt-1">For authorized personnel only. Activities are audited.</p>
         </div>
 
-        {/* Demo Credentials Panel */}
-        <div className="mt-6 bg-white rounded-2xl border border-gray-100 shadow-md p-5">
-          <p className="text-xs font-bold text-[#6B7280] uppercase tracking-widest text-center mb-3">
-            Demo Accounts — click to fill
-          </p>
-          <div className="flex gap-2">
-            {DEMO_ACCOUNTS.map((acct) => (
-              <button
-                key={acct.role}
-                type="button"
-                onClick={() => { setEmail(acct.email); setPassword('Password123') }}
-                className="flex-1 py-2 px-1 rounded-lg text-xs font-bold transition-all hover:scale-105 active:scale-95 border"
-                style={{ backgroundColor: acct.color, color: acct.textColor, borderColor: acct.color }}
-              >
-                {acct.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-[#9CA3AF] text-center mt-3">
-            Password for all accounts: <span className="font-bold text-[#374151]">Password123</span>
-          </p>
-        </div>
+
       </div>
     </div>
   )

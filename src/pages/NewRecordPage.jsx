@@ -76,6 +76,7 @@ export const NewRecordPage = () => {
             category,
             department_id,
             company,
+            hourly_rate,
             departments (
               name
             )
@@ -128,7 +129,7 @@ export const NewRecordPage = () => {
     try {
       let query = supabase
         .from('profiles')
-        .select(`id, full_name, staff_id, category, department_id, departments(name)`)
+        .select(`id, full_name, staff_id, category, department_id, company, hourly_rate, departments(name)`)
         .eq('is_active', true)
         .eq('role', 'employee')
         .order('full_name')
@@ -207,11 +208,18 @@ export const NewRecordPage = () => {
     
     setLiveHours(calculatedHours)
 
-    const rate = Number(hourlyRate) || 0
+    let baseRate = Number(hourlyRate);
+    if (!baseRate && selectedEmployeeIds.length > 0) {
+      const firstEmp = employees.find(e => e.id === selectedEmployeeIds[0]);
+      baseRate = Number(firstEmp?.hourly_rate) || 25;
+    } else if (!baseRate) {
+      baseRate = 25;
+    }
+
     const mult = Number(rateMultiplier) || 0
-    const payout = calculatedHours * rate * mult
+    const payout = calculatedHours * baseRate * mult
     setLivePayout(Number(payout.toFixed(2)))
-  }, [timeIn, timeOut, hourlyRate, rateMultiplier])
+  }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees])
 
   // Filter employees based on search text
   const filteredEmployees = employees.filter(emp => {
@@ -306,12 +314,11 @@ export const NewRecordPage = () => {
 
       if (isAdmin(profile) && hourlyRate && Number(hourlyRate) > 0) {
         // Admin explicitly set a rate, so make it the new default for selected employees
-        const staffIdsToUpdate = rows.map(r => r.employee_id)
-        if (staffIdsToUpdate.length > 0) {
+        if (selectedEmployeeIds.length > 0) {
           const { error: rateErr } = await supabase
             .from('profiles')
             .update({ hourly_rate: Number(hourlyRate) })
-            .in('staff_id', staffIdsToUpdate)
+            .in('id', selectedEmployeeIds)
           if (rateErr) console.error("Rate default update failed:", rateErr.message)
         }
       }
