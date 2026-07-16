@@ -554,6 +554,7 @@ export const NewRecordPage = () => {
                   className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
                   disabled={submitting}
                 >
+                  <option value="1.0">1.0x (Straight Time)</option>
                   <option value="1.5">1.5x (Standard Overtime)</option>
                   <option value="2.0">2.0x (Sunday / Public Holiday)</option>
                 </select>

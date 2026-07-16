@@ -16,6 +16,19 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// Create a secondary Supabase client that doesn't persist sessions
+// This allows admins to create new users without getting logged out
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://uwphxlefoexkanpsptqt.supabase.co'
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cGh4bGVmb2V4a2FucHNwdHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MDUxMzIsImV4cCI6MjA5NTA4MTEzMn0.RQah-7Ht3-0t6i1f_8taPswRKhU0WfZWmtdFdt1a1cg'
+
+const adminAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
+  }
+})
+
 export const NewUserPage = () => {
   const navigate = useNavigate()
   const { profile: currentUser } = useAuth()
@@ -78,8 +91,8 @@ export const NewUserPage = () => {
 
       setSubmitting(true);
       try {
-        // Use Supabase Auth to create user; triggers will create profile automatically
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        // Use the adminAuthClient to create the user without persisting the session
+        const { data: signUpData, error: signUpError } = await adminAuthClient.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
           options: {

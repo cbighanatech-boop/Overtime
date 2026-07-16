@@ -12,7 +12,8 @@ import {
   Award,
   UserCheck,
   FolderOpen,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
@@ -149,6 +150,27 @@ export const UsersPage = () => {
     } catch (err) {
       console.error("Role update failed:", err.message)
       toast.error(err.message || "Failed to update employee role.")
+    }
+  }
+
+  // Admin can change position
+  const handlePositionEdit = async (user) => {
+    const newPosition = window.prompt(`Enter new position for ${user.full_name}:`, user.position || '')
+    if (newPosition === null || newPosition === user.position) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ position: newPosition })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s position updated.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, position: newPosition } : u))
+    } catch (err) {
+      console.error("Position update failed:", err.message)
+      toast.error(err.message || "Failed to update position.")
     }
   }
 
@@ -296,8 +318,19 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Position cell */}
-                    <td className="px-6 py-4 text-gray-600">
-                      {user.position || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}
+                    <td className="px-6 py-4 text-gray-600 group">
+                      <div className="flex items-center gap-2">
+                        <span>{user.position || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handlePositionEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit position"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Category cell */}
