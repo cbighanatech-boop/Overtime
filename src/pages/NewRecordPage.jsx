@@ -211,9 +211,9 @@ export const NewRecordPage = () => {
     let baseRate = Number(hourlyRate);
     if (!baseRate && selectedEmployeeIds.length > 0) {
       const firstEmp = employees.find(e => e.id === selectedEmployeeIds[0]);
-      baseRate = Number(firstEmp?.hourly_rate) || 25;
+      baseRate = Number(firstEmp?.hourly_rate) || 0;
     } else if (!baseRate) {
-      baseRate = 25;
+      baseRate = 0;
     }
 
     const mult = Number(rateMultiplier) || 0
@@ -296,7 +296,7 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          hourly_rate: hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 25),
+          hourly_rate: hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0),
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: livePayout,
           description: description.trim(),
@@ -312,7 +312,7 @@ export const NewRecordPage = () => {
 
       if (error) throw error
 
-      if (isAdmin(profile) && hourlyRate && Number(hourlyRate) > 0) {
+      if (isAdmin(profile) && hourlyRate !== '') {
         // Admin explicitly set a rate, so make it the new default for selected employees
         if (selectedEmployeeIds.length > 0) {
           const { error: rateErr } = await supabase
@@ -523,8 +523,8 @@ export const NewRecordPage = () => {
           </div>
 
           {/* Section 3: Financial Calculations */}
-          {isAdmin(profile) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#006939]/5 border border-[#006939]/10 rounded-2xl p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#006939]/5 border border-[#006939]/10 rounded-2xl p-5">
+            {isAdmin(profile) ? (
               <div>
                 <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <DollarSign size={14} />
@@ -542,25 +542,27 @@ export const NewRecordPage = () => {
                   disabled={submitting}
                 />
               </div>
+            ) : (
+              <div className="hidden md:block"></div>
+            )}
 
-              <div>
-                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
-                  Rate Multiplier
-                </label>
-                <select
-                  required
-                  value={rateMultiplier}
-                  onChange={(e) => setRateMultiplier(e.target.value)}
-                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
-                  disabled={submitting}
-                >
-                  <option value="1.0">1.0x (Straight Time)</option>
-                  <option value="1.5">1.5x (Standard Overtime)</option>
-                  <option value="2.0">2.0x (Sunday / Public Holiday)</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
+                Rate Multiplier
+              </label>
+              <select
+                required
+                value={rateMultiplier}
+                onChange={(e) => setRateMultiplier(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
+                disabled={submitting}
+              >
+                <option value="1.0">1.0x (Straight Time)</option>
+                <option value="1.5">1.5x (Standard Overtime)</option>
+                <option value="2.0">2.0x (Sunday / Public Holiday)</option>
+              </select>
             </div>
-          )}
+          </div>
 
           {/* Section 4: Live Hours & Payout Summary Panel (High Premium Visual) */}
           <div className="bg-gradient-to-r from-[#004D2A] to-[#006939] rounded-2xl p-6 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 shadow-md shadow-[#004D2A]/10">

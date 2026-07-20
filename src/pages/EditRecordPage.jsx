@@ -40,6 +40,7 @@ export const EditRecordPage = () => {
   const [timeIn, setTimeIn] = useState('')
   const [timeOut, setTimeOut] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
+  const [originalHourlyRate, setOriginalHourlyRate] = useState('')
   const [recordDate, setRecordDate] = useState('')
   const [rateMultiplier, setRateMultiplier] = useState('')
   const [description, setDescription] = useState('')
@@ -84,6 +85,7 @@ export const EditRecordPage = () => {
         setTimeIn(data.time_in?.slice(0, 5) || '') // Format to HH:MM
         setTimeOut(data.time_out?.slice(0, 5) || '')
         setHourlyRate(String(data.hourly_rate))
+        setOriginalHourlyRate(String(data.hourly_rate))
         setRateMultiplier(String(data.rate_multiplier))
         setDescription(data.description);
         // Populate reason and otherReason based on stored value
@@ -198,7 +200,7 @@ export const EditRecordPage = () => {
         .eq('id', id)
 
       // Update the employee's stored hourly rate to become the new default going forward
-      if (isAdmin(profile) && nextRate > 0 && recordEmployeeId) {
+      if (isAdmin(profile) && hourlyRate !== originalHourlyRate && hourlyRate !== '' && recordEmployeeId) {
         const { error: employeeError } = await supabase
           .from('profiles')
           .update({ hourly_rate: nextRate })
@@ -317,8 +319,8 @@ export const EditRecordPage = () => {
           </div>
 
           {/* Section 2: Finances */}
-          {isAdmin(profile) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#006939]/5 border border-[#006939]/10 rounded-2xl p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#006939]/5 border border-[#006939]/10 rounded-2xl p-5">
+            {isAdmin(profile) ? (
               <div>
                 <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <DollarSign size={14} />
@@ -332,28 +334,31 @@ export const EditRecordPage = () => {
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
                   className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all font-medium"
-                  placeholder="25.00"
+                  placeholder="0.00"
                   disabled={submitting}
                 />
               </div>
+            ) : (
+              <div className="hidden md:block"></div>
+            )}
 
-              <div>
-                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
-                  Rate Multiplier
-                </label>
-                <select
-                  required
-                  value={rateMultiplier}
-                  onChange={(e) => setRateMultiplier(e.target.value)}
-                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
-                  disabled={submitting}
-                >
-                  <option value="1.5">1.5x (Standard Overtime)</option>
-                  <option value="2.0">2.0x (Sunday / Public Holiday)</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
+                Rate Multiplier
+              </label>
+              <select
+                required
+                value={rateMultiplier}
+                onChange={(e) => setRateMultiplier(e.target.value)}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
+                disabled={submitting}
+              >
+                <option value="1.0">1.0x (Straight Time)</option>
+                <option value="1.5">1.5x (Standard Overtime)</option>
+                <option value="2.0">2.0x (Sunday / Public Holiday)</option>
+              </select>
             </div>
-          )}
+          </div>
 
           {/* Section 3: Live Payout panel */}
           <div className="bg-gradient-to-r from-[#004D2A] to-[#006939] rounded-2xl p-6 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 shadow-md shadow-[#004D2A]/10 animate-fade-in">
