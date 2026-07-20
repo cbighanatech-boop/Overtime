@@ -286,10 +286,36 @@ export const NewRecordPage = () => {
 
     setSubmitting(true)
     try {
-      const rows = selectedEmployeeIds.map(empId => {
+      const rows = await Promise.all(selectedEmployeeIds.map(async empId => {
         const selectedEmployee = employees.find(emp => emp.id === empId);
-        const empRate = hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0);
-        const empPayout = Number((liveHours * empRate * Number(rateMultiplier)).toFixed(2));
+        let empRate = hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0);
+        
+        // Robust fallback: if profile has no rate yet, lookup their last used rate
+        if (empRate === 0) {
+          const empIdToMatch = selectedEmployee.staff_id || empId;
+          const { data: pastRecord } = await supabase
+            .from('overtime_records')
+            .select('hourly_rate')
+            .eq('employee_id', empIdToMatch)
+            .gt('hourly_rate', 0)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+            
+          if (pastRecord) {
+            empRate = Number(pastRecord.hourly_rate);
+          }
+        }
+
+        // Guarantee accurate hours calculation synchronously
+        const [inH, inM] = timeIn.split(':').map(Number);
+        const [outH, outM] = timeOut.split(':').map(Number);
+        let inMins = inH * 60 + inM;
+        let outMins = outH * 60 + outM;
+        if (outMins < inMins) outMins += 24 * 60;
+        const calcHours = Number(((outMins - inMins) / 60).toFixed(2));
+
+        const empPayout = Number((calcHours * empRate * Number(rateMultiplier)).toFixed(2));
         
         return {
           employee_name: selectedEmployee.full_name,
@@ -299,6 +325,7 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
+          overtime_hours: calcHours,
           hourly_rate: empRate,
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: empPayout,
@@ -307,7 +334,7 @@ export const NewRecordPage = () => {
           captured_by: profile.id,
           status: 'Pending'
         };
-      })
+      }))
 
       const { error } = await supabase
         .from('overtime_records')
