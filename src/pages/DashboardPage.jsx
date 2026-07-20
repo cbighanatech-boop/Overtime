@@ -74,6 +74,7 @@ const getDateRange = (filter, customRange) => {
     case 'all':
     default:
       startDate = new Date('1970-01-01')
+      endDate = new Date('2099-12-31')
       break
   }
   
