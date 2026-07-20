@@ -541,9 +541,19 @@ export const NewRecordPage = () => {
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
                   className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all"
-                  placeholder="Leave empty to use employee default"
+                  placeholder={
+                    selectedEmployeeIds.length === 1
+                      ? `Default: ${employees.find(e => e.id === selectedEmployeeIds[0])?.hourly_rate || '0'}`
+                      : "Leave empty for defaults"
+                  }
                   disabled={submitting}
                 />
+                {selectedEmployeeIds.length > 0 && hourlyRate === '' && (
+                  <p className="text-[10px] text-gray-500 mt-1.5 flex items-center gap-1 font-semibold">
+                    <CheckCircle2 size={12} className="text-[#006939]" />
+                    Using {selectedEmployeeIds.length === 1 ? `default rate: GHS ${employees.find(e => e.id === selectedEmployeeIds[0])?.hourly_rate || '0.00'}` : 'individual employee default rates'}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="hidden md:block"></div>
