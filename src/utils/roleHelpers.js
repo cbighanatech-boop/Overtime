@@ -75,13 +75,13 @@ export const canReviewRecord = (profile, record) => {
 }
 
 /**
- * Checks if a pending record has passed its 7-day review deadline
+ * Checks if a pending record has passed its 5-day review deadline
  */
 export const isReviewTimedOut = (record) => {
   if (record.status !== 'Pending') return false
   const deadline = record.review_deadline 
     ? new Date(record.review_deadline) 
-    : new Date(new Date(record.captured_at).getTime() + 7 * 24 * 60 * 60 * 1000)
+    : new Date(new Date(record.captured_at).getTime() + 5 * 24 * 60 * 60 * 1000)
   return new Date() > deadline
 }
 
