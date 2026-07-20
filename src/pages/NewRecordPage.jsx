@@ -298,7 +298,7 @@ export const NewRecordPage = () => {
             .select('hourly_rate')
             .eq('employee_id', empIdToMatch)
             .gt('hourly_rate', 0)
-            .order('created_at', { ascending: false })
+            .order('captured_at', { ascending: false })
             .limit(1)
             .single();
             
@@ -325,7 +325,6 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          overtime_hours: calcHours,
           hourly_rate: empRate,
           rate_multiplier: Number(rateMultiplier),
           estimated_payout: empPayout,
