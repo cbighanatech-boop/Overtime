@@ -288,6 +288,9 @@ export const NewRecordPage = () => {
     try {
       const rows = selectedEmployeeIds.map(empId => {
         const selectedEmployee = employees.find(emp => emp.id === empId);
+        const empRate = hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0);
+        const empPayout = Number((liveHours * empRate * Number(rateMultiplier)).toFixed(2));
+        
         return {
           employee_name: selectedEmployee.full_name,
           employee_id: selectedEmployee.staff_id || empId,
@@ -296,9 +299,9 @@ export const NewRecordPage = () => {
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          hourly_rate: hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0),
+          hourly_rate: empRate,
           rate_multiplier: Number(rateMultiplier),
-          estimated_payout: livePayout,
+          estimated_payout: empPayout,
           description: description.trim(),
           reason: reason === 'Others' ? otherReason.trim() : reason,
           captured_by: profile.id,

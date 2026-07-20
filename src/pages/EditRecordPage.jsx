@@ -194,6 +194,7 @@ export const EditRecordPage = () => {
           time_out: timeOut,
           hourly_rate: Number(hourlyRate),
           rate_multiplier: Number(rateMultiplier),
+          estimated_payout: livePayout,
           reason: reason === 'Others' ? otherReason.trim() : reason,
           description: description.trim()
         })
