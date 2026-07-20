@@ -380,14 +380,12 @@ export const EditRecordPage = () => {
                 <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Overtime Hours</p>
                 <p className="text-3xl font-[900] text-[#FDB913] mt-1">{liveHours} <span className="text-xs text-white font-bold">HRS</span></p>
               </div>
-              {isAdmin(profile) && (
                 <div className="border-l border-white/20 pl-6 sm:pl-8">
                   <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Est. Payout</p>
                   <p className="text-3xl font-[900] text-[#FDB913] mt-1">
                     GHS {safeCurrency(livePayout)}
                   </p>
                 </div>
-              )}
             </div>
           </div>
 
