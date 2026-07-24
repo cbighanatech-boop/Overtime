@@ -365,7 +365,7 @@ export const DashboardPage = () => {
           const payout = Number(rec.estimated_payout || 0)
 
           totalHours += hours
-          estimatedPayout += payout
+          if (rec.status === 'Approved') estimatedPayout += payout
           if (rec.status === 'Pending') pendingCount++
 
           // Highest overtime record
@@ -395,16 +395,24 @@ export const DashboardPage = () => {
           reasonCountMap[reason] = (reasonCountMap[reason] || 0) + 1
           reasonCostMap[reason] = (reasonCostMap[reason] || 0) + payout
 
-          // Day trend
+          // Day trend — store raw ISO date for sorting
           try {
-            const dateStr = format(parseISO(rec.work_date), 'MMM dd')
-            trendDayMap[dateStr] = (trendDayMap[dateStr] || 0) + hours
+            const rawDate = rec.work_date
+            const dateStr = format(parseISO(rawDate), 'MMM dd')
+            if (!trendDayMap[rawDate]) {
+              trendDayMap[rawDate] = { label: dateStr, hours: 0 }
+            }
+            trendDayMap[rawDate].hours += hours
           } catch (_) {}
 
-          // Month trend
+          // Month trend — store raw month start for sorting
           try {
+            const monthStart = format(startOfMonth(parseISO(rec.work_date)), 'yyyy-MM-dd')
             const monthStr = format(startOfMonth(parseISO(rec.work_date)), 'MMM yyyy')
-            trendMonthMap[monthStr] = (trendMonthMap[monthStr] || 0) + hours
+            if (!trendMonthMap[monthStart]) {
+              trendMonthMap[monthStart] = { label: monthStr, hours: 0 }
+            }
+            trendMonthMap[monthStart].hours += hours
           } catch (_) {}
         })
       }
@@ -424,18 +432,23 @@ export const DashboardPage = () => {
         highestEmployee
       })
 
-      // Day trend (last 15 active days)
-      const compiledDay = Object.keys(trendDayMap).map(date => ({
-        date,
-        hours: Number(trendDayMap[date].toFixed(1))
-      })).slice(-15)
+      // Day trend (last 15 active days, sorted chronologically)
+      const compiledDay = Object.keys(trendDayMap)
+        .sort()
+        .map(rawDate => ({
+          date: trendDayMap[rawDate].label,
+          hours: Number(trendDayMap[rawDate].hours.toFixed(1))
+        }))
+        .slice(-15)
       setChartData(compiledDay)
 
-      // Month trend
-      const compiledMonth = Object.keys(trendMonthMap).map(month => ({
-        date: month,
-        hours: Number(trendMonthMap[month].toFixed(1))
-      }))
+      // Month trend (sorted chronologically)
+      const compiledMonth = Object.keys(trendMonthMap)
+        .sort()
+        .map(rawMonth => ({
+          date: trendMonthMap[rawMonth].label,
+          hours: Number(trendMonthMap[rawMonth].hours.toFixed(1))
+        }))
       setMonthChartData(compiledMonth)
 
       // Dept chart
