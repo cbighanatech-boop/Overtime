@@ -198,14 +198,14 @@ export const DashboardPage = () => {
         .order('work_date', { ascending: false })
       
       // Also fallback for old records without a review_deadline: 
-      // where captured_at < now() - 7 days
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      // where captured_at < now() - 5 days
+      const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('overtime_records')
         .select(`*, departments(name)`)
         .eq('status', 'Pending')
         .is('review_deadline', null)
-        .lt('captured_at', sevenDaysAgo)
+        .lt('captured_at', fiveDaysAgo)
         .order('work_date', { ascending: false })
 
       if (error || fallbackError) throw error || fallbackError
@@ -828,7 +828,7 @@ export const DashboardPage = () => {
             </div>
             <div>
               <h4 className="text-md font-bold text-[#006939] uppercase tracking-wider font-sans">Timed Out Records ({timedOutRecords.length})</h4>
-              <p className="text-xs text-gray-400 mt-0.5">Records that have passed their 7-day supervisor review window. Grant extensions to allow review.</p>
+              <p className="text-xs text-gray-400 mt-0.5">Records that have passed their 5-day supervisor review window. Grant extensions to allow review.</p>
             </div>
           </div>
 
