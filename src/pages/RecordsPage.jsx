@@ -18,7 +18,8 @@ import {
   Clock,
   XCircle,
   FileSpreadsheet,
-  FolderOpen
+  FolderOpen,
+  AlertTriangle
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { canEditRecord, canDeleteRecord, canReviewRecord, canSelectRecord, isReviewTimedOut } from '../utils/roleHelpers'
@@ -39,6 +40,7 @@ export const RecordsPage = () => {
   const [departments, setDepartments] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [exportLoading, setExportLoading] = useState(false)
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false)
 
 
   // Filters State
@@ -190,6 +192,32 @@ export const RecordsPage = () => {
     } catch (err) {
       console.error("Delete failed:", err.message)
       toast.error(err.message || "Failed to delete record.")
+    }
+  }
+
+  // Bulk Delete handler (Admin only)
+  const handleBulkDelete = async () => {
+    if (selectedRecordIds.length === 0) return
+    if (!window.confirm(
+      `Are you absolutely sure you want to delete ${selectedRecordIds.length} overtime record(s)?\n\nThis action cannot be undone.`
+    )) return
+
+    setBulkDeleteLoading(true)
+    try {
+      const { error } = await supabase
+        .from('overtime_records')
+        .delete()
+        .in('id', selectedRecordIds)
+
+      if (error) throw error
+      toast.success(`${selectedRecordIds.length} record(s) deleted successfully.`)
+      setSelectedRecordIds([])
+      fetchRecords()
+    } catch (err) {
+      console.error("Bulk delete failed:", err.message)
+      toast.error(err.message || "Failed to delete selected records.")
+    } finally {
+      setBulkDeleteLoading(false)
     }
   }
 
@@ -769,6 +797,16 @@ export const RecordsPage = () => {
               <XCircle size={14} className="text-white" />
               <span>Decline</span>
             </button>
+            {canDeleteRecord(profile) && (
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleteLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-red-900/80 hover:bg-red-800 border border-red-500/30 text-white rounded-lg text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={14} className="text-red-300" />
+                <span>{bulkDeleteLoading ? 'Deleting...' : 'Delete'}</span>
+              </button>
+            )}
             <button
               onClick={() => setSelectedRecordIds([])}
               className="text-[10px] font-bold text-white/60 hover:text-white hover:underline pl-1"
