@@ -263,6 +263,7 @@ export const RecordsPage = () => {
         Employee: rec.employee_name,
         Department: rec.departments?.name,
         Date: rec.work_date,
+        "1.0x Hours": String(rec.rate_multiplier) === '1.0' ? rec.overtime_hours : '',
         "1.5x Hours": String(rec.rate_multiplier) === '1.5' ? rec.overtime_hours : '',
         "2.0x Hours": String(rec.rate_multiplier) === '2.0' ? rec.overtime_hours : '',
         Rate: rec.hourly_rate,
