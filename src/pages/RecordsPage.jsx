@@ -635,8 +635,8 @@ export const RecordsPage = () => {
                           </span>
                         )}
 
-                        {/* Delete Button (Admin only) */}
-                        {canDeleteRecord(profile) && (
+                        {/* Delete Button (Admin & Rep with restrictions) */}
+                        {canDeleteRecord(profile, rec) && (
                           <button
                             onClick={() => handleDelete(rec.id)}
                             className="p-1.5 rounded-md hover:bg-red-50 text-red-300 hover:text-[#DC2626] transition-colors"

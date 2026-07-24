@@ -275,8 +275,8 @@ export const NewRecordPage = () => {
       toast.error("Invalid overtime duration: Hours must be greater than zero.")
       return
     }
-    if (!description.trim()) {
-      toast.error("Please provide a task description.")
+    if (reason === 'Others' && !description.trim()) {
+      toast.error("Please provide a task description when 'Others' is selected.")
       return
     }
     if (reason === 'Others' && !otherReason.trim()) {
@@ -647,10 +647,10 @@ export const NewRecordPage = () => {
   <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
     <FileText size={14} />
     Task Description
-    <span className="text-red-500">*</span>
+    {reason === 'Others' && <span className="text-red-500">*</span>}
   </label>
   <textarea
-    required
+    required={reason === 'Others'}
     value={description}
     onChange={(e) => setDescription(e.target.value)}
     className="block w-full px-3.5 py-3 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all resize-none"

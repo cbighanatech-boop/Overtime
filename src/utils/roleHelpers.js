@@ -46,10 +46,17 @@ export const canEditRecord = (profile, record) => {
 /**
  * Determines if a user can delete a specific overtime record
  * - Admin: Can delete ANY record
- * - Rep / Supervisor: Cannot delete records
+ * - Rep: Can delete ONLY if record is 'Pending' AND belongs to their department
+ * - Supervisor: Cannot delete records
  */
-export const canDeleteRecord = (profile) => {
-  return isAdmin(profile)
+export const canDeleteRecord = (profile, record) => {
+  if (!profile) return false
+  if (isAdmin(profile)) return true
+  if (isRep(profile)) {
+    if (!record) return true // allow showing the button when no specific record context
+    return record.status === 'Pending' && record.department_id === profile.department_id
+  }
+  return false
 }
 
 export const canDeleteUser = (profile) => {
