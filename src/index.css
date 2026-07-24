@@ -54,3 +54,31 @@
 .font-neo-sans {
   font-family: 'Neo Sans Pro', 'Neo Sans', 'Inter', sans-serif;
 }
+
+/* Mobile touch optimization */
+@media (pointer: coarse) {
+  button, a, input, select, textarea, label {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Allow smaller elements inside dense tables/grids */
+  table button, table a,
+  .flex button, .flex a {
+    min-height: unset;
+    min-width: unset;
+  }
+}
+
+/* Shimmer subtle animation for pending status badges */
+.shimmer-subtle {
+  animation: shimmer-pulse 2s ease-in-out infinite;
+}
+@keyframes shimmer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Safe area padding for notched mobile devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

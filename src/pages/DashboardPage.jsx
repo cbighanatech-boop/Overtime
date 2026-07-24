@@ -119,6 +119,13 @@ const REASON_COLORS = {
   'Others': '#A78BFA'
 }
 
+// Canonical overtime reason categories — any non-matching reason maps to 'Others'
+const CANONICAL_REASONS = ['Holiday', 'PM', 'Replacement', 'Normal Routine Schedule', 'Others']
+const normalizeReason = (reason) => {
+  if (!reason) return 'Others'
+  return CANONICAL_REASONS.includes(reason) ? reason : 'Others'
+}
+
 export const DashboardPage = () => {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -390,8 +397,8 @@ export const DashboardPage = () => {
             statusHoursMap[rec.status] += hours
           }
 
-          // Reason groupings
-          const reason = rec.reason || 'Others'
+          // Reason groupings (normalized to canonical categories)
+          const reason = normalizeReason(rec.reason)
           reasonCountMap[reason] = (reasonCountMap[reason] || 0) + 1
           reasonCostMap[reason] = (reasonCostMap[reason] || 0) + payout
 
@@ -581,10 +588,10 @@ export const DashboardPage = () => {
         <h4 className="text-sm font-bold text-[#006939] uppercase tracking-wider mb-4">Filter by Period</h4>
         <div className="flex flex-wrap items-end gap-4">
           {/* Quick filter buttons */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setDateFilter('all')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                 dateFilter === 'all'
                   ? 'bg-[#006939] text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -594,7 +601,7 @@ export const DashboardPage = () => {
             </button>
             <button
               onClick={() => setDateFilter('month')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                 dateFilter === 'month'
                   ? 'bg-[#006939] text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -604,7 +611,7 @@ export const DashboardPage = () => {
             </button>
             <button
               onClick={() => setDateFilter('quarter')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                 dateFilter === 'quarter'
                   ? 'bg-[#006939] text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -614,7 +621,7 @@ export const DashboardPage = () => {
             </button>
             <button
               onClick={() => setDateFilter('custom')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                 dateFilter === 'custom'
                   ? 'bg-[#006939] text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -990,7 +997,7 @@ export const DashboardPage = () => {
           </div>
           <div>
             <p className="text-xs text-white/60 font-bold uppercase tracking-widest">Avg. Overtime / Record</p>
-            <p className="text-4xl font-[900] text-white mt-1 tracking-tight">
+            <p className="text-2xl sm:text-4xl font-[900] text-white mt-1 tracking-tight">
               {formatNumber(metrics.avgHours, 1)}
               <span className="text-sm font-bold text-white/60 ml-1">HRS</span>
             </p>
@@ -1008,7 +1015,7 @@ export const DashboardPage = () => {
           </div>
           <div>
             <p className="text-xs text-[#004D2A]/70 font-bold uppercase tracking-widest">Highest Single Record</p>
-            <p className="text-4xl font-[900] text-[#004D2A] mt-1 tracking-tight">
+            <p className="text-2xl sm:text-4xl font-[900] text-[#004D2A] mt-1 tracking-tight">
               {formatNumber(metrics.highestHours, 1)}
               <span className="text-sm font-bold text-[#004D2A]/60 ml-1">HRS</span>
             </p>

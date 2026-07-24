@@ -767,7 +767,7 @@ export const RecordsPage = () => {
           FLOATING BULK ACTIONS PANEL (High Premium Visual)
          ------------------------------------------------------------- */}
       {selectedRecordIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#004D2A]/95 backdrop-blur-md text-white border border-[#006939]/30 px-6 py-4 rounded-2xl shadow-2xl flex items-center justify-between gap-6 min-w-[320px] sm:min-w-[480px] animate-fade-in-up">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-[#004D2A]/95 backdrop-blur-md text-white border border-[#006939]/30 px-4 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-6 w-[calc(100%-2rem)] sm:w-auto sm:min-w-[480px] max-w-lg sm:max-w-none animate-fade-in-up">
           <div className="flex flex-col">
             <span className="text-sm font-black text-[#FDB913]">
               {selectedRecordIds.length} Record(s) Selected

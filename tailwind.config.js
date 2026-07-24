@@ -32,6 +32,25 @@ export default {
       fontFamily: {
         sans: ['Inter', 'Neo Sans Pro', 'sans-serif'],
       },
+      keyframes: {
+        'fade-in-up': {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'scale-up': {
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'slide-in': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+      },
+      animation: {
+        'fade-in-up': 'fade-in-up 0.3s ease-out',
+        'scale-up': 'scale-up 0.2s ease-out',
+        'slide-in': 'slide-in 0.3s ease-out',
+      },
     },
   },
   plugins: [],
