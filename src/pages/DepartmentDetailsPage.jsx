@@ -9,10 +9,12 @@ import {
   Activity,
   Calendar,
   Loader2,
-  FolderOpen
+  FolderOpen,
+  Eye
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
+import EmployeeDetailsModal from '../components/departments/EmployeeDetailsModal'
 
 export const DepartmentDetailsPage = () => {
   const { id } = useParams()
@@ -22,6 +24,10 @@ export const DepartmentDetailsPage = () => {
   const [department, setDepartment] = useState(null)
   const [staffMembers, setStaffMembers] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Selected Employee Modal State
+  const [selectedEmployee, setSelectedEmployee] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   // Fetch department and all assigned staff
   const fetchDepartmentDetails = async () => {
@@ -60,6 +66,11 @@ export const DepartmentDetailsPage = () => {
   useEffect(() => {
     fetchDepartmentDetails()
   }, [id])
+
+  const handleOpenEmployeeDossier = (member) => {
+    setSelectedEmployee(member)
+    setModalOpen(true)
+  }
 
   if (loading) {
     return (
@@ -103,7 +114,7 @@ export const DepartmentDetailsPage = () => {
           bg: 'bg-gray-50',
           border: 'border-gray-200',
           text: 'text-gray-700',
-          label: role
+          label: role || 'Employee'
         }
     }
   }
@@ -123,7 +134,7 @@ export const DepartmentDetailsPage = () => {
             {department.name}
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            View all assigned users and employees
+            View all assigned users and employees. Click any name to pull complete employee data & overtime hours.
           </p>
         </div>
       </div>
@@ -157,10 +168,13 @@ export const DepartmentDetailsPage = () => {
 
       {/* Staff List */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
           <h3 className="text-sm font-bold text-[#006939] uppercase tracking-wider">
             Assigned Users & Employees ({staffMembers.length})
           </h3>
+          <span className="text-xs text-gray-500 font-semibold italic">
+            Click an employee's name to view overtime history
+          </span>
         </div>
 
         {staffMembers.length > 0 ? (
@@ -179,10 +193,17 @@ export const DepartmentDetailsPage = () => {
                 {staffMembers.map((member) => {
                   const roleBadge = getRoleBadge(member.role)
                   return (
-                    <tr key={member.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Name */}
+                    <tr key={member.id} className="hover:bg-emerald-50/30 transition-colors">
+                      {/* Name - Clickable */}
                       <td className="px-6 py-4">
-                        <p className="font-semibold text-[#1A1A1A]">{member.full_name}</p>
+                        <button
+                          onClick={() => handleOpenEmployeeDossier(member)}
+                          className="font-bold text-[#006939] hover:text-[#004D2A] hover:underline flex items-center gap-2 group text-left transition-colors focus:outline-none"
+                          title="Click to view employee profile & overtime history"
+                        >
+                          <span>{member.full_name}</span>
+                          <Eye size={14} className="opacity-0 group-hover:opacity-100 text-[#006939] transition-opacity shrink-0" />
+                        </button>
                       </td>
 
                       {/* Email */}
@@ -232,8 +253,20 @@ export const DepartmentDetailsPage = () => {
           </div>
         )}
       </div>
+
+      {/* Employee Details & Overtime Dossier Modal */}
+      <EmployeeDetailsModal
+        employee={selectedEmployee}
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setSelectedEmployee(null)
+        }}
+        departmentName={department?.name}
+      />
     </div>
   )
 }
 
 export default DepartmentDetailsPage
+
