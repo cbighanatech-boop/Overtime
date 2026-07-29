@@ -58,23 +58,40 @@ const formatNumber = (value, decimals = 2) => {
 // Get date range based on filter
 const getDateRange = (filter, customRange) => {
   const today = new Date()
-  let startDate, endDate = endOfDay(today)
+  let startDate, endDate
   
   switch (filter) {
     case 'month':
       startDate = startOfDay(startOfMonth(today))
+      endDate = endOfDay(endOfMonth(today))
       break
+    case 'lastMonth': {
+      const prevMonth = subMonths(today, 1)
+      startDate = startOfDay(startOfMonth(prevMonth))
+      endDate = endOfDay(endOfMonth(prevMonth))
+      break
+    }
     case 'quarter':
       startDate = startOfDay(subMonths(today, 3))
+      endDate = endOfDay(today)
+      break
+    case 'year':
+      startDate = startOfDay(new Date(today.getFullYear(), 0, 1))
+      endDate = endOfDay(today)
       break
     case 'custom':
-      startDate = new Date(customRange.startDate)
-      endDate = new Date(customRange.endDate)
+      if (customRange?.startDate && customRange?.endDate) {
+        startDate = startOfDay(parseISO(customRange.startDate))
+        endDate = endOfDay(parseISO(customRange.endDate))
+      } else {
+        startDate = startOfDay(startOfMonth(today))
+        endDate = endOfDay(today)
+      }
       break
     case 'all':
     default:
-      startDate = new Date('1970-01-01')
-      endDate = new Date('2099-12-31')
+      startDate = new Date('1970-01-01T00:00:00')
+      endDate = new Date('2099-12-31T23:59:59')
       break
   }
   
@@ -132,6 +149,7 @@ export const DashboardPage = () => {
   const [metrics, setMetrics] = useState({
     totalHours: 0,
     employeeCount: 0,
+    totalStaffCount: 0,
     pendingCount: 0,
     estimatedPayout: 0,
     capturedCount: 0,
@@ -150,7 +168,7 @@ export const DashboardPage = () => {
   const [deptCostData, setDeptCostData] = useState([])
   
   // Date filter state
-  const [dateFilter, setDateFilter] = useState('all') // 'all' | 'month' | 'quarter' | 'custom'
+  const [dateFilter, setDateFilter] = useState('all') // 'all' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom'
   const [customDateRange, setCustomDateRange] = useState({
     startDate: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
     endDate: format(new Date(), 'yyyy-MM-dd')
@@ -196,8 +214,10 @@ export const DashboardPage = () => {
     if (!isAdmin(profile)) return
     setLoadingTimedOut(true)
     try {
+      const { startDate, endDate } = getDateRange(dateFilter, customDateRange)
+
       // Find pending records that have a review deadline in the past
-      const { data, error } = await supabase
+      let query1 = supabase
         .from('overtime_records')
         .select(`*, departments(name)`)
         .eq('status', 'Pending')
@@ -207,13 +227,20 @@ export const DashboardPage = () => {
       // Also fallback for old records without a review_deadline: 
       // where captured_at < now() - 5 days
       const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: fallbackData, error: fallbackError } = await supabase
+      let query2 = supabase
         .from('overtime_records')
         .select(`*, departments(name)`)
         .eq('status', 'Pending')
         .is('review_deadline', null)
         .lt('captured_at', fiveDaysAgo)
         .order('work_date', { ascending: false })
+
+      if (dateFilter !== 'all') {
+        query1 = query1.gte('work_date', startDate).lte('work_date', endDate)
+        query2 = query2.gte('work_date', startDate).lte('work_date', endDate)
+      }
+
+      const [{ data, error }, { data: fallbackData, error: fallbackError }] = await Promise.all([query1, query2])
 
       if (error || fallbackError) throw error || fallbackError
       
@@ -365,6 +392,7 @@ export const DashboardPage = () => {
       const reasonCostMap = {}
       const trendDayMap = {}
       const trendMonthMap = {}
+      const activeStaffSet = new Set()
 
       if (records) {
         records.forEach(rec => {
@@ -374,6 +402,10 @@ export const DashboardPage = () => {
           totalHours += hours
           if (rec.status === 'Approved') estimatedPayout += payout
           if (rec.status === 'Pending') pendingCount++
+
+          if (rec.employee_name || rec.employee_id) {
+            activeStaffSet.add(rec.employee_name || rec.employee_id)
+          }
 
           // Highest overtime record
           if (hours > highestHours) {
@@ -426,10 +458,12 @@ export const DashboardPage = () => {
 
       const totalRecords = records?.length || 0
       const avgHours = totalRecords > 0 ? totalHours / totalRecords : 0
+      const displayEmployeeCount = dateFilter === 'all' ? (empCount || 0) : activeStaffSet.size
 
       setMetrics({
         totalHours: Number(totalHours.toFixed(1)),
-        employeeCount: empCount || 0,
+        employeeCount: displayEmployeeCount,
+        totalStaffCount: empCount || 0,
         pendingCount,
         estimatedPayout: Number(estimatedPayout.toFixed(2)),
         capturedCount,
@@ -585,7 +619,19 @@ export const DashboardPage = () => {
 
       {/* ── Date Filter Section ── */}
       <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-        <h4 className="text-sm font-bold text-[#006939] uppercase tracking-wider mb-4">Filter by Period</h4>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h4 className="text-sm font-bold text-[#006939] uppercase tracking-wider">Filter by Period</h4>
+          
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 self-start sm:self-auto">
+            <CalendarDays size={14} className="text-[#006939]" />
+            <span>
+              {dateFilter === 'all'
+                ? 'Active Period: All Time'
+                : `Active Period: ${format(parseISO(getDateRange(dateFilter, customDateRange).startDate), 'dd MMM yyyy')} – ${format(parseISO(getDateRange(dateFilter, customDateRange).endDate), 'dd MMM yyyy')}`}
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-end gap-4">
           {/* Quick filter buttons */}
           <div className="flex flex-wrap gap-2">
@@ -610,6 +656,16 @@ export const DashboardPage = () => {
               This Month
             </button>
             <button
+              onClick={() => setDateFilter('lastMonth')}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'lastMonth'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Last Month
+            </button>
+            <button
               onClick={() => setDateFilter('quarter')}
               className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                 dateFilter === 'quarter'
@@ -618,6 +674,16 @@ export const DashboardPage = () => {
               }`}
             >
               Last 3 Months
+            </button>
+            <button
+              onClick={() => setDateFilter('year')}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                dateFilter === 'year'
+                  ? 'bg-[#006939] text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Year
             </button>
             <button
               onClick={() => setDateFilter('custom')}
@@ -937,15 +1003,24 @@ export const DashboardPage = () => {
           <div className="flex justify-between items-start pl-2">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                {isRep(profile) || isSupervisor(profile) ? 'Dept Employees' : 'Active Staff'}
+                {dateFilter === 'all'
+                  ? (isRep(profile) || isSupervisor(profile) ? 'Dept Employees' : 'Active Staff')
+                  : (isRep(profile) || isSupervisor(profile) ? 'Dept Staff w/ Overtime' : 'Staff w/ Overtime')}
               </p>
-              <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">{metrics.employeeCount}</h3>
+              <h3 className="text-3xl font-[900] text-[#1A1A1A] mt-2 tracking-tight">
+                {metrics.employeeCount}
+                {dateFilter !== 'all' && metrics.totalStaffCount ? (
+                  <span className="text-xs font-bold text-gray-400 ml-1">/ {metrics.totalStaffCount}</span>
+                ) : null}
+              </h3>
             </div>
             <div className="p-3 bg-gray-100 rounded-xl text-gray-600 shrink-0">
               <Users size={20} />
             </div>
           </div>
-          <p className="text-xs text-gray-400 pl-2">Registered on portal database.</p>
+          <p className="text-xs text-gray-400 pl-2">
+            {dateFilter === 'all' ? 'Registered on portal database.' : 'Active staff with overtime in period.'}
+          </p>
         </div>
 
         {/* Payout (Admin) / My Entries (Rep) */}
