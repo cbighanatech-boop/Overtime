@@ -174,6 +174,66 @@ export const UsersPage = () => {
     }
   }
 
+  // Admin can edit full name
+  const handleFullNameEdit = async (user) => {
+    const newName = window.prompt(`Enter new full name for ${user.full_name}:`, user.full_name || '')
+    if (newName === null || !newName.trim() || newName.trim() === user.full_name) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: newName.trim() })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s name updated to ${newName.trim()}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, full_name: newName.trim() } : u))
+    } catch (err) {
+      console.error("Full name update failed:", err.message)
+      toast.error(err.message || "Failed to update name.")
+    }
+  }
+
+  // Admin can edit Staff ID
+  const handleStaffIdEdit = async (user) => {
+    const newStaffId = window.prompt(`Enter new Staff ID for ${user.full_name}:`, user.staff_id || '')
+    if (newStaffId === null || newStaffId.trim() === user.staff_id) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ staff_id: newStaffId.trim() || null })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s Staff ID updated to ${newStaffId.trim() || 'N/A'}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, staff_id: newStaffId.trim() || null } : u))
+    } catch (err) {
+      console.error("Staff ID update failed:", err.message)
+      toast.error(err.message || "Failed to update Staff ID.")
+    }
+  }
+
+  // Admin can change Category
+  const handleCategoryChange = async (user, newCategory) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ category: newCategory || null })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s category updated.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, category: newCategory || null } : u))
+    } catch (err) {
+      console.error("Category update failed:", err.message)
+      toast.error(err.message || "Failed to update category.")
+    }
+  }
+
   // Admin can assign department to a user/employee
   const handleDepartmentChange = async (user, departmentId) => {
     const deptName = departments.find(d => d.id === departmentId)?.name || ''
@@ -308,13 +368,35 @@ export const UsersPage = () => {
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-[#E8F5EE]/10 transition-colors">
                     {/* Name cell */}
-                    <td className="px-6 py-4 font-semibold text-[#1A1A1A]">
-                      {user.full_name}
+                    <td className="px-6 py-4 font-semibold text-[#1A1A1A] group">
+                      <div className="flex items-center gap-2">
+                        <span>{user.full_name}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleFullNameEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit name"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Staff ID cell */}
-                    <td className="px-6 py-4 font-bold text-gray-700">
-                      {user.staff_id || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}
+                    <td className="px-6 py-4 font-bold text-gray-700 group">
+                      <div className="flex items-center gap-2">
+                        <span>{user.staff_id || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleStaffIdEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Staff ID"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Position cell */}
@@ -334,19 +416,31 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Category cell */}
-                    <td className="px-6 py-4">
-                      {user.category === 'Shift' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E1F5FE] text-[#0288D1] border border-[#B3E5FC]">
-                          Shift
-                        </span>
-                      ) : user.category === 'Straight Day' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFFDE7] text-[#F57F17] border border-[#FFF9C4]">
-                          Straight Day
-                        </span>
+                    <td className="px-6 py-4 font-medium text-gray-600">
+                      {profile?.role === 'admin' ? (
+                        <select
+                          value={user.category || ''}
+                          onChange={e => handleCategoryChange(user, e.target.value)}
+                          className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
+                        >
+                          <option value="">Standard</option>
+                          <option value="Shift">Shift</option>
+                          <option value="Straight Day">Straight Day</option>
+                        </select>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          {user.category || 'Standard'}
-                        </span>
+                        user.category === 'Shift' ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E1F5FE] text-[#0288D1] border border-[#B3E5FC]">
+                            Shift
+                          </span>
+                        ) : user.category === 'Straight Day' ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFFDE7] text-[#F57F17] border border-[#FFF9C4]">
+                            Straight Day
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            {user.category || 'Standard'}
+                          </span>
+                        )
                       )}
                     </td>
 
