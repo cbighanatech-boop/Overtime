@@ -221,6 +221,44 @@ export const NewRecordPage = () => {
     setLivePayout(Number(payout.toFixed(2)))
   }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees])
 
+  // Adjust rate multiplier and reason options dynamically based on selected employees' company & category
+  useEffect(() => {
+    if (selectedEmployeeIds.length === 0) return
+
+    const selectedEmps = employees.filter(emp => selectedEmployeeIds.includes(emp.id))
+    const hasCBI = selectedEmps.some(emp => emp.company?.toUpperCase() === 'CBI')
+    const hasAbanach = selectedEmps.some(emp => emp.company?.toUpperCase() === 'ABANACH')
+    const hasShift = selectedEmps.some(emp => emp.category === 'Shift')
+    const hasStraightDay = selectedEmps.some(emp => emp.category === 'Straight Day')
+
+    // Handle Rate Multiplier adjustment
+    if (hasCBI && !hasAbanach) {
+      if (rateMultiplier !== '1.5' && rateMultiplier !== '2.0') {
+        setRateMultiplier('1.5')
+      }
+    } else if (hasAbanach && !hasCBI) {
+      if (rateMultiplier !== '1.0' && rateMultiplier !== '1.5') {
+        setRateMultiplier('1.5')
+      }
+    } else if (hasCBI && hasAbanach) {
+      if (rateMultiplier !== '1.5') {
+        setRateMultiplier('1.5')
+      }
+    }
+
+    // Handle Reason adjustment
+    if (reason) {
+      const isShiftReason = reason.includes('(Shift Only)')
+      const isStraightDayReason = reason.includes('(Straight Day Only)')
+
+      if (isShiftReason && !hasShift) {
+        setReason('')
+      } else if (isStraightDayReason && !hasStraightDay) {
+        setReason('')
+      }
+    }
+  }, [selectedEmployeeIds, employees, rateMultiplier, reason])
+
   // Filter employees based on search text
   const filteredEmployees = employees.filter(emp => {
     const search = employeeSearchText.toLowerCase().trim()
@@ -420,14 +458,16 @@ export const NewRecordPage = () => {
                 </button>
                 <span className="text-gray-300">|</span>
                 {/* Quick Add Employee shortcut */}
-                <button
-                  type="button"
-                  onClick={() => setQuickAddOpen(true)}
-                  className="flex items-center gap-1 text-xs font-bold text-[#FDB913] bg-[#004D2A] hover:bg-[#006939] px-2.5 py-1 rounded-md transition-colors"
-                >
-                  <UserPlus size={12} />
-                  <span>Add New Employee</span>
-                </button>
+                {isAdmin(profile) && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddOpen(true)}
+                    className="flex items-center gap-1 text-xs font-bold text-[#FDB913] bg-[#004D2A] hover:bg-[#006939] px-2.5 py-1 rounded-md transition-colors"
+                  >
+                    <UserPlus size={12} />
+                    <span>Add New Employee</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -596,9 +636,23 @@ export const NewRecordPage = () => {
                 className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
                 disabled={submitting}
               >
-                <option value="1.0">1.0x (Straight Time)</option>
-                <option value="1.5">1.5x (Standard Overtime)</option>
-                <option value="2.0">2.0x (Sunday / Public Holiday)</option>
+                {(() => {
+                  const selectedEmps = employees.filter(emp => selectedEmployeeIds.includes(emp.id))
+                  const hasCBI = selectedEmps.some(emp => emp.company?.toUpperCase() === 'CBI')
+                  const hasAbanach = selectedEmps.some(emp => emp.company?.toUpperCase() === 'ABANACH')
+
+                  const show1_0 = !hasCBI
+                  const show1_5 = true
+                  const show2_0 = !hasAbanach
+
+                  return (
+                    <>
+                      {show1_0 && <option value="1.0">1.0x (Straight Time)</option>}
+                      {show1_5 && <option value="1.5">1.5x (Standard Overtime)</option>}
+                      {show2_0 && <option value="2.0">2.0x (Sunday / Public Holiday)</option>}
+                    </>
+                  )
+                })()}
               </select>
             </div>
           </div>
@@ -673,12 +727,35 @@ export const NewRecordPage = () => {
     className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] transition-all cursor-pointer"
     disabled={submitting}
   >
-    <option value="">Select a Reason</option>
-    <option value="Holiday">Holiday</option>
-    <option value="Replacement">Replacement</option>
-    <option value="Normal Routine Schedule">Normal Routine Schedule</option>
-    <option value="PM">PM</option>
-    <option value="Others">Others</option>
+    {(() => {
+      const selectedEmps = employees.filter(emp => selectedEmployeeIds.includes(emp.id))
+      const hasShift = selectedEmps.some(emp => emp.category === 'Shift')
+      const hasStraightDay = selectedEmps.some(emp => emp.category === 'Straight Day')
+
+      const showShiftOptions = !selectedEmployeeIds.length || hasShift
+      const showStraightDayOptions = !selectedEmployeeIds.length || hasStraightDay
+
+      return (
+        <>
+          <option value="">Select a Reason</option>
+          <option value="Holiday">Holiday</option>
+          {showShiftOptions && (
+            <>
+              <option value="Replacement - Extended Hours (Shift Only)">Replacement - Extended Hours (Shift Only)</option>
+              <option value="Replacement - Day_Off (Shift Only)">Replacement - Day_Off (Shift Only)</option>
+            </>
+          )}
+          {showStraightDayOptions && (
+            <option value="Normal Routine Schedule (Straight Day Only)">Normal Routine Schedule (Straight Day Only)</option>
+          )}
+          <option value="PM">PM</option>
+          {showStraightDayOptions && (
+            <option value="Weekend (Straight Day Only)">Weekend (Straight Day Only)</option>
+          )}
+          <option value="Others">Others</option>
+        </>
+      )
+    })()}
   </select>
 </div>
 {reason === 'Others' && (

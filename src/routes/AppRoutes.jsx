@@ -113,11 +113,11 @@ export const AppRoutes = () => {
           } 
         />
 
-        {/* Create New Employee Form - Admin & Rep */}
+        {/* Create New Employee Form - Admin only */}
         <Route 
           path="/employees/new" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'rep']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <NewEmployeePage />
             </ProtectedRoute>
           } 

@@ -528,6 +528,7 @@ export const RecordsPage = () => {
                   <th className="px-6 py-4">Hours</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Description</th>
+                  <th className="px-6 py-4">Reason</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -582,6 +583,11 @@ export const RecordsPage = () => {
                     {/* Description cell */}
                     <td className="px-6 py-4 text-xs text-gray-500 max-w-[200px] truncate" title={rec.description}>
                       {rec.description}
+                    </td>
+
+                    {/* Reason cell */}
+                    <td className="px-6 py-4 text-xs text-gray-500 max-w-[150px] truncate" title={rec.reason}>
+                      {rec.reason || 'N/A'}
                     </td>
 
                     {/* Actions cell */}

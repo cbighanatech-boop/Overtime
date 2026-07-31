@@ -46,6 +46,8 @@ export const EditRecordPage = () => {
   const [description, setDescription] = useState('')
   const [reason, setReason] = useState('Holiday')
   const [otherReason, setOtherReason] = useState('')
+  const [employeeCompany, setEmployeeCompany] = useState('')
+  const [employeeCategory, setEmployeeCategory] = useState('Shift')
 
   // Computed Live Fields
   const [liveHours, setLiveHours] = useState(0)
@@ -89,13 +91,51 @@ export const EditRecordPage = () => {
         setRateMultiplier(String(data.rate_multiplier))
         setDescription(data.description);
         // Populate reason and otherReason based on stored value
-        const predefined = ['Holiday', 'Replacement', 'Normal Routine Schedule', 'PM'];
+        const predefined = [
+          'Holiday',
+          'Replacement - Extended Hours (Shift Only)',
+          'Replacement - Day_Off (Shift Only)',
+          'Normal Routine Schedule (Straight Day Only)',
+          'PM',
+          'Weekend (Straight Day Only)'
+        ];
         if (predefined.includes(data.reason)) {
           setReason(data.reason);
           setOtherReason('');
         } else {
           setReason('Others');
           setOtherReason(data.reason || '');
+        }
+
+        // Fetch company and category from profiles table
+        if (data.employee_id) {
+          supabase
+            .from('profiles')
+            .select('company, category')
+            .eq('staff_id', data.employee_id)
+            .maybeSingle()
+            .then(({ data: empProfile, error: empErr }) => {
+              if (!empErr && empProfile) {
+                setEmployeeCompany(empProfile.company || '')
+                setEmployeeCategory(empProfile.category || data.shift_type || 'Shift')
+              } else {
+                supabase
+                  .from('profiles')
+                  .select('company, category')
+                  .eq('id', data.employee_id)
+                  .maybeSingle()
+                  .then(({ data: empProfile2, error: empErr2 }) => {
+                    if (!empErr2 && empProfile2) {
+                      setEmployeeCompany(empProfile2.company || '')
+                      setEmployeeCategory(empProfile2.category || data.shift_type || 'Shift')
+                    } else {
+                      setEmployeeCategory(data.shift_type || 'Shift')
+                    }
+                  })
+              }
+            })
+        } else {
+          setEmployeeCategory(data.shift_type || 'Shift')
         }
       } catch (err) {
         console.error("Load edit record failed:", err.message)
@@ -139,6 +179,35 @@ export const EditRecordPage = () => {
     const payout = calculatedHours * rate * mult
     setLivePayout(Number(payout.toFixed(2)))
   }, [timeIn, timeOut, hourlyRate, rateMultiplier])
+
+  // Adjust rate multiplier and reason options if they violate the company/category rules
+  useEffect(() => {
+    if (!employeeCompany && !employeeCategory) return
+
+    const isCBI = employeeCompany?.toUpperCase() === 'CBI'
+    const isAbanach = employeeCompany?.toUpperCase() === 'ABANACH'
+
+    if (isCBI) {
+      if (rateMultiplier !== '1.5' && rateMultiplier !== '2.0') {
+        setRateMultiplier('1.5')
+      }
+    } else if (isAbanach) {
+      if (rateMultiplier !== '1.0' && rateMultiplier !== '1.5') {
+        setRateMultiplier('1.5')
+      }
+    }
+
+    if (reason) {
+      const isShiftReason = reason.includes('(Shift Only)')
+      const isStraightDayReason = reason.includes('(Straight Day Only)')
+
+      if (isShiftReason && employeeCategory !== 'Shift') {
+        setReason('Holiday')
+      } else if (isStraightDayReason && employeeCategory !== 'Straight Day') {
+        setReason('Holiday')
+      }
+    }
+  }, [employeeCompany, employeeCategory, rateMultiplier, reason])
 
   // Handle Form submission
   const handleSubmit = async (e) => {
@@ -354,9 +423,22 @@ export const EditRecordPage = () => {
                 className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
                 disabled={submitting}
               >
-                <option value="1.0">1.0x (Straight Time)</option>
-                <option value="1.5">1.5x (Standard Overtime)</option>
-                <option value="2.0">2.0x (Sunday / Public Holiday)</option>
+                {(() => {
+                  const isCBI = employeeCompany?.toUpperCase() === 'CBI'
+                  const isAbanach = employeeCompany?.toUpperCase() === 'ABANACH'
+
+                  const show1_0 = !isCBI
+                  const show1_5 = true
+                  const show2_0 = !isAbanach
+
+                  return (
+                    <>
+                      {show1_0 && <option value="1.0">1.0x (Straight Time)</option>}
+                      {show1_5 && <option value="1.5">1.5x (Standard Overtime)</option>}
+                      {show2_0 && <option value="2.0">2.0x (Sunday / Public Holiday)</option>}
+                    </>
+                  )
+                })()}
               </select>
             </div>
           </div>
@@ -407,11 +489,30 @@ export const EditRecordPage = () => {
                 className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all"
                 disabled={submitting}
               >
-                <option value="Holiday">Holiday</option>
-                <option value="Replacement">Replacement</option>
-                <option value="Normal Routine Schedule">Normal Routine Schedule</option>
-                <option value="PM">PM</option>
-                <option value="Others">Others</option>
+                {(() => {
+                  const showShiftOptions = employeeCategory === 'Shift'
+                  const showStraightDayOptions = employeeCategory === 'Straight Day'
+
+                  return (
+                    <>
+                      <option value="Holiday">Holiday</option>
+                      {showShiftOptions && (
+                        <>
+                          <option value="Replacement - Extended Hours (Shift Only)">Replacement - Extended Hours (Shift Only)</option>
+                          <option value="Replacement - Day_Off (Shift Only)">Replacement - Day_Off (Shift Only)</option>
+                        </>
+                      )}
+                      {showStraightDayOptions && (
+                        <option value="Normal Routine Schedule (Straight Day Only)">Normal Routine Schedule (Straight Day Only)</option>
+                      )}
+                      <option value="PM">PM</option>
+                      {showStraightDayOptions && (
+                        <option value="Weekend (Straight Day Only)">Weekend (Straight Day Only)</option>
+                      )}
+                      <option value="Others">Others</option>
+                    </>
+                  )
+                })()}
               </select>
               {reason === 'Others' && (
                 <input

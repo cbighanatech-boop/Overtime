@@ -150,16 +150,18 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
               <PlusCircle size={18} />
               <span>New Entry</span>
             </button>
-            <button
-              onClick={() => {
-                if (mobileOpen) setMobileOpen(false)
-                navigate('/employees/new')
-              }}
-              className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-sm border border-white/20 transition-all active:scale-[0.98] font-sans"
-            >
-              <Users size={18} />
-              <span>Add Employee</span>
-            </button>
+            {isAdmin(profile) && (
+              <button
+                onClick={() => {
+                  if (mobileOpen) setMobileOpen(false)
+                  navigate('/employees/new')
+                }}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-sm border border-white/20 transition-all active:scale-[0.98] font-sans"
+              >
+                <Users size={18} />
+                <span>Add Employee</span>
+              </button>
+            )}
           </div>
         )}
       </nav>

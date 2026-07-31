@@ -30,7 +30,7 @@ import {
   CheckSquare,
   CalendarDays
 } from 'lucide-react'
-import { canEditRecord, canReviewRecord } from '../utils/roleHelpers'
+import { canEditRecord, canReviewRecord, isAdmin } from '../utils/roleHelpers'
 import ReviewModal from '../components/records/ReviewModal'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -39,6 +39,7 @@ export const RecordDetailPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const { profile } = useAuth()
+  const adminView = isAdmin(profile)
 
   // State Management
   const [record, setRecord] = useState(null)
