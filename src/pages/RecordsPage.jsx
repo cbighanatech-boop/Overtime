@@ -49,6 +49,7 @@ export const RecordsPage = () => {
   const [selectedDept, setSelectedDept] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [selectedReason, setSelectedReason] = useState('')
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -122,6 +123,24 @@ export const RecordsPage = () => {
         query = query.lte('work_date', endDate)
       }
 
+      // 4b. Reason Filter
+      if (selectedReason) {
+        if (selectedReason === 'Others') {
+          query = query.not('reason', 'in', [
+            'Holiday',
+            'Replacement',
+            'Replacement - Extended Hours (Shift Only)',
+            'Replacement - Day_Off (Shift Only)',
+            'Normal Routine Schedule',
+            'Normal Routine Schedule (Straight Day Only)',
+            'PM',
+            'Weekend (Straight Day Only)'
+          ])
+        } else {
+          query = query.eq('reason', selectedReason)
+        }
+      }
+
       // 5. Pagination ranges and sort by date descending
       query = query
         .order('work_date', { ascending: false })
@@ -145,7 +164,7 @@ export const RecordsPage = () => {
   useEffect(() => {
     setSelectedRecordIds([])
     fetchRecords()
-  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate])
+  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason])
 
   // Split search triggering to debounce/prevent excessive DB queries
   useEffect(() => {
@@ -174,7 +193,7 @@ export const RecordsPage = () => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate])
+  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason])
 
   // Delete handler (Admin only)
   const handleDelete = async (id) => {
@@ -251,6 +270,23 @@ export const RecordsPage = () => {
       if (startDate) query = query.gte('work_date', startDate)
       if (endDate) query = query.lte('work_date', endDate)
 
+      if (selectedReason) {
+        if (selectedReason === 'Others') {
+          query = query.not('reason', 'in', [
+            'Holiday',
+            'Replacement',
+            'Replacement - Extended Hours (Shift Only)',
+            'Replacement - Day_Off (Shift Only)',
+            'Normal Routine Schedule',
+            'Normal Routine Schedule (Straight Day Only)',
+            'PM',
+            'Weekend (Straight Day Only)'
+          ])
+        } else {
+          query = query.eq('reason', selectedReason)
+        }
+      }
+
       // Order newest first
       query = query.order('work_date', { ascending: false })
 
@@ -298,6 +334,7 @@ export const RecordsPage = () => {
     setSelectedDept('')
     setStartDate('')
     setEndDate('')
+    setSelectedReason('')
     setCurrentPage(1)
   }
 
@@ -388,7 +425,7 @@ export const RecordsPage = () => {
           <span>Search & Filters</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
           {/* Search bar */}
           <div className="relative rounded-lg shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -413,6 +450,22 @@ export const RecordsPage = () => {
             <option value="Pending">Pending</option>
             <option value="Approved">Approved</option>
             <option value="Declined">Declined</option>
+          </select>
+
+          {/* Reason filter */}
+          <select
+            value={selectedReason}
+            onChange={(e) => { setSelectedReason(e.target.value); setCurrentPage(1); }}
+            className="block w-full px-3 py-2 bg-[#F3F4F6] border border-gray-200 rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:bg-white transition-all cursor-pointer"
+          >
+            <option value="">All Reasons</option>
+            <option value="Holiday">Holiday</option>
+            <option value="Replacement - Extended Hours (Shift Only)">Replacement - Extended Hours (Shift Only)</option>
+            <option value="Replacement - Day_Off (Shift Only)">Replacement - Day_Off (Shift Only)</option>
+            <option value="Normal Routine Schedule (Straight Day Only)">Normal Routine Schedule (Straight Day Only)</option>
+            <option value="PM">PM</option>
+            <option value="Weekend (Straight Day Only)">Weekend (Straight Day Only)</option>
+            <option value="Others">Others</option>
           </select>
 
           {/* Department filter (Admin only) */}
@@ -474,7 +527,7 @@ export const RecordsPage = () => {
             <FileSpreadsheet size={14} />
             <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
           </button>
-          {(searchText || selectedStatus || selectedDept || startDate || endDate) && (
+          {(searchText || selectedStatus || selectedDept || startDate || endDate || selectedReason) && (
             <button
               onClick={handleClearFilters}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#DC2626] font-bold hover:underline"

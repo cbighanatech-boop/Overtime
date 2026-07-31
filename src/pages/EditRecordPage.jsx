@@ -113,7 +113,7 @@ export const EditRecordPage = () => {
           supabase
             .from('profiles')
             .select('company, category')
-            .eq('staff_id', data.employee_id)
+            .ilike('staff_id', data.employee_id)
             .maybeSingle()
             .then(({ data: empProfile, error: empErr }) => {
               if (!empErr && empProfile) {
@@ -189,11 +189,11 @@ export const EditRecordPage = () => {
     const isAbanach = employeeCompany?.toUpperCase() === 'ABANACH'
 
     if (isCBI) {
-      if (rateMultiplier !== '1.5' && rateMultiplier !== '2.0') {
+      if (rateMultiplier !== '1.5' && rateMultiplier !== '2') {
         setRateMultiplier('1.5')
       }
     } else if (isAbanach) {
-      if (rateMultiplier !== '1.0' && rateMultiplier !== '1.5') {
+      if (rateMultiplier !== '1' && rateMultiplier !== '1.5') {
         setRateMultiplier('1.5')
       }
     }
@@ -435,9 +435,9 @@ export const EditRecordPage = () => {
 
                   return (
                     <>
-                      {show1_0 && <option value="1.0">1.0x (Straight Time)</option>}
+                      {show1_0 && <option value="1">1.0x (Straight Time)</option>}
                       {show1_5 && <option value="1.5">1.5x (Standard Overtime)</option>}
-                      {show2_0 && <option value="2.0">2.0x (Sunday / Public Holiday)</option>}
+                      {show2_0 && <option value="2">2.0x (Sunday / Public Holiday)</option>}
                     </>
                   )
                 })()}
