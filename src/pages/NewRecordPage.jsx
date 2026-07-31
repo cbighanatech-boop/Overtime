@@ -22,7 +22,8 @@ import {
   Calculator,
   Calendar,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Info
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isAdmin, isRep, isSupervisor } from '../utils/roleHelpers'
@@ -402,7 +403,7 @@ export const NewRecordPage = () => {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 font-sans">
+    <div className="max-w-6xl mx-auto space-y-6 font-sans">
       {/* Top Breadcrumb Navigation */}
       <div className="flex items-center gap-3">
         <button
@@ -421,8 +422,9 @@ export const NewRecordPage = () => {
         </div>
       </div>
 
-      {/* Main Capture Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-100 shadow-xl shadow-black/5 overflow-hidden relative">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Main Capture Form */}
+        <form onSubmit={handleSubmit} className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-xl shadow-black/5 overflow-hidden relative">
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#006939]"></div>
 
         <div className="p-6 sm:p-8 space-y-6">
@@ -806,6 +808,85 @@ export const NewRecordPage = () => {
           </button>
         </div>
       </form>
+
+      {/* Policy and Guidelines Sidebar Panel */}
+      <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-xl shadow-black/5 overflow-hidden p-6 space-y-6 lg:sticky lg:top-6">
+        <h3 className="text-sm font-[900] text-[#006939] uppercase tracking-wider border-b border-gray-150 pb-3 flex items-center gap-2">
+          <Info className="h-5 w-5 text-[#FDB913]" />
+          <span>Overtime Policy & Guidelines</span>
+        </h3>
+
+        {/* A. Overtime Rate Multipliers */}
+        <div className="space-y-3">
+          <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 font-sans">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#006939]/10 text-[#006939] text-[10px] font-bold">A</span>
+            Overtime Rate Multipliers
+          </h4>
+          
+          <div className="pl-6 space-y-3 text-xs text-gray-600 font-sans">
+            <div>
+              <p className="font-semibold text-gray-700">Standard Rates:</p>
+              <ul className="list-disc pl-4 mt-1 space-y-1">
+                <li>
+                  <strong className="text-[#006939]">CBI:</strong> 1.5x for Monday–Friday; 2.0x for Weekends and Holidays.
+                </li>
+                <li>
+                  <strong className="text-[#006939]">Abanach:</strong> 1.0x for Monday–Friday; 1.5x for Weekends and Holidays.
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700">Shift Worker Application:</p>
+              <ul className="list-disc pl-4 mt-1 space-y-1">
+                <li>Overtime hours worked during a normal scheduled shift follow the standard weekday rates (1.5x for CBI / 1.0x for Abanach).</li>
+                <li>Overtime hours worked on a scheduled Day Off or Holiday follow the weekend/holiday rates (2.0x for CBI / 1.5x for Abanach).</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* B. Break Deductions */}
+        <div className="space-y-3">
+          <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 font-sans">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#006939]/10 text-[#006939] text-[10px] font-bold">B</span>
+            Break Deductions for Shift Workers
+          </h4>
+          <div className="pl-6 space-y-2 text-xs text-gray-600 font-sans">
+            <div className="flex gap-2 items-start bg-gray-50 p-2.5 rounded-lg border border-gray-150">
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[9px] uppercase shrink-0 mt-0.5">8h - 16h</span>
+              <p className="leading-relaxed">For total work hours exceeding 8 hours, but less than or equal to 16 hours, a 30-minute break deduction applies.</p>
+            </div>
+            <div className="flex gap-2 items-start bg-gray-50 p-2.5 rounded-lg border border-gray-150">
+              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[9px] uppercase shrink-0 mt-0.5">≥ 16h</span>
+              <p className="leading-relaxed">For total work hours equal to or exceeding 16 hours, a 1-hour break deduction applies.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* C. Special Shift Overtime */}
+        <div className="space-y-3">
+          <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide flex items-center gap-1.5 font-sans">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#006939]/10 text-[#006939] text-[10px] font-bold">C</span>
+            Special Shift Worker Overtime
+          </h4>
+          <div className="pl-6 space-y-3 text-xs text-gray-600 font-sans">
+            <div>
+              <p className="font-semibold text-gray-700">Extended Hours (Normal Scheduled Shift):</p>
+              <p className="mt-1 leading-relaxed text-gray-500">
+                If a shift worker is assigned to work extended hours (regardless of the reason) on their regular scheduled shift, these hours are classified as <strong className="text-gray-800">"Replacement - Extended Hours."</strong> The rate is 1.5x for CBI and 1.0x for Abanach.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-700">Off Day Work:</p>
+              <p className="mt-1 leading-relaxed text-gray-500">
+                If a shift worker is assigned to work on a scheduled day off (regardless of the reason), these hours are classified as <strong className="text-gray-800">"Replacement - Day Off Hours."</strong> The rate is 2.0x for CBI and 1.5x for Abanach.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
       {/* -------------------------------------------------------
           QUICK ADD EMPLOYEE MODAL
