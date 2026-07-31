@@ -50,6 +50,7 @@ export const RecordsPage = () => {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedReason, setSelectedReason] = useState('')
+  const [selectedShiftType, setSelectedShiftType] = useState('')
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -141,6 +142,11 @@ export const RecordsPage = () => {
         }
       }
 
+      // 4c. Shift Category Filter
+      if (selectedShiftType) {
+        query = query.eq('shift_type', selectedShiftType)
+      }
+
       // 5. Pagination ranges and sort by date descending
       query = query
         .order('work_date', { ascending: false })
@@ -164,7 +170,7 @@ export const RecordsPage = () => {
   useEffect(() => {
     setSelectedRecordIds([])
     fetchRecords()
-  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason])
+  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason, selectedShiftType])
 
   // Split search triggering to debounce/prevent excessive DB queries
   useEffect(() => {
@@ -193,7 +199,7 @@ export const RecordsPage = () => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason])
+  }, [profile, currentPage, selectedStatus, selectedDept, startDate, endDate, selectedReason, selectedShiftType])
 
   // Delete handler (Admin only)
   const handleDelete = async (id) => {
@@ -287,6 +293,10 @@ export const RecordsPage = () => {
         }
       }
 
+      if (selectedShiftType) {
+        query = query.eq('shift_type', selectedShiftType)
+      }
+
       // Order newest first
       query = query.order('work_date', { ascending: false })
 
@@ -335,6 +345,7 @@ export const RecordsPage = () => {
     setStartDate('')
     setEndDate('')
     setSelectedReason('')
+    setSelectedShiftType('')
     setCurrentPage(1)
   }
 
@@ -425,7 +436,7 @@ export const RecordsPage = () => {
           <span>Search & Filters</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
           {/* Search bar */}
           <div className="relative rounded-lg shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -466,6 +477,17 @@ export const RecordsPage = () => {
             <option value="PM">PM</option>
             <option value="Weekend (Straight Day Only)">Weekend (Straight Day Only)</option>
             <option value="Others">Others</option>
+          </select>
+
+          {/* Shift Category filter */}
+          <select
+            value={selectedShiftType}
+            onChange={(e) => { setSelectedShiftType(e.target.value); setCurrentPage(1); }}
+            className="block w-full px-3 py-2 bg-[#F3F4F6] border border-gray-200 rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:bg-white transition-all cursor-pointer"
+          >
+            <option value="">All Categories</option>
+            <option value="Shift">Shift</option>
+            <option value="Straight Day">Straight Day</option>
           </select>
 
           {/* Department filter (Admin only) */}
@@ -527,7 +549,7 @@ export const RecordsPage = () => {
             <FileSpreadsheet size={14} />
             <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
           </button>
-          {(searchText || selectedStatus || selectedDept || startDate || endDate || selectedReason) && (
+          {(searchText || selectedStatus || selectedDept || startDate || endDate || selectedReason || selectedShiftType) && (
             <button
               onClick={handleClearFilters}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#DC2626] font-bold hover:underline"
