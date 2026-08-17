@@ -51,6 +51,8 @@ export const NewRecordPage = () => {
   const [otherReason, setOtherReason] = useState('')
   const [holidays, setHolidays] = useState([])
   const [liveTotalPayout, setLiveTotalPayout] = useState(0)
+  const [fullWork, setFullWork] = useState(false)
+  const [breakHours, setBreakHours] = useState('0')
 
   // Quick Add Employee Modal State
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -219,7 +221,18 @@ export const NewRecordPage = () => {
     const elapsedMins = outMinutes - inMinutes
     const calculatedHours = Number((elapsedMins / 60).toFixed(2))
     
-    setLiveHours(calculatedHours)
+    // Deduct full work and break time
+    let netHours = calculatedHours
+    if (fullWork) {
+      netHours -= 8
+    }
+    netHours -= Number(breakHours) || 0
+    if (netHours < 0) {
+      netHours = 0
+    }
+    netHours = Number(netHours.toFixed(2))
+
+    setLiveHours(netHours)
 
     const isHoliday = holidays.includes(date)
     let totalCost = 0
@@ -238,7 +251,7 @@ export const NewRecordPage = () => {
         reason
       })) || 1.5
 
-      const payout = calculatedHours * empRate * empMult
+      const payout = netHours * empRate * empMult
       totalCost += payout
       if (index === 0) {
         firstEmpPayout = payout
@@ -247,7 +260,7 @@ export const NewRecordPage = () => {
 
     setLivePayout(Number(firstEmpPayout.toFixed(2)))
     setLiveTotalPayout(Number(totalCost.toFixed(2)))
-  }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees, date, holidays, reason])
+  }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees, date, holidays, reason, fullWork, breakHours])
 
   // Adjust rate multiplier and reason options dynamically based on selected employees' company, category, date, and reason
   useEffect(() => {
@@ -385,6 +398,16 @@ export const NewRecordPage = () => {
         if (outMins < inMins) outMins += 24 * 60;
         const calcHours = Number(((outMins - inMins) / 60).toFixed(2));
 
+        let netHours = calcHours;
+        if (fullWork) {
+          netHours -= 8;
+        }
+        netHours -= Number(breakHours) || 0;
+        if (netHours < 0) {
+          netHours = 0;
+        }
+        netHours = Number(netHours.toFixed(2));
+
         const empMult = getRateMultiplier({
           company: selectedEmployee.company,
           category: selectedEmployee.category,
@@ -392,7 +415,7 @@ export const NewRecordPage = () => {
           isHoliday,
           reason: reason === 'Others' ? otherReason.trim() : reason
         })
-        const empPayout = Number((calcHours * empRate * Number(empMult)).toFixed(2));
+        const empPayout = Number((netHours * empRate * Number(empMult)).toFixed(2));
         
         return {
           employee_name: selectedEmployee.full_name,
@@ -405,6 +428,9 @@ export const NewRecordPage = () => {
           hourly_rate: empRate,
           rate_multiplier: Number(empMult),
           estimated_payout: empPayout,
+          overtime_hours: netHours,
+          full_work: fullWork,
+          break_hours: Number(breakHours),
           description: description.trim(),
           reason: reason === 'Others' ? otherReason.trim() : reason,
           captured_by: profile.id,
@@ -628,6 +654,40 @@ export const NewRecordPage = () => {
                 className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
                 disabled={submitting}
               />
+            </div>
+          </div>
+
+          {/* Section 2b: Adjustments (Full Work & Break) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 border border-gray-150 rounded-2xl p-5 items-center">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="fullWork"
+                checked={fullWork}
+                onChange={(e) => setFullWork(e.target.checked)}
+                className="w-4 h-4 text-[#006939] border-gray-300 rounded focus:ring-[#006939] cursor-pointer"
+                disabled={submitting}
+              />
+              <label htmlFor="fullWork" className="text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none">
+                Full Work (Deduct 8 hours)
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2">
+                Deduct Break Time
+              </label>
+              <select
+                value={breakHours}
+                onChange={(e) => setBreakHours(e.target.value)}
+                className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
+                disabled={submitting}
+              >
+                <option value="0">No Break (0 hrs)</option>
+                <option value="0.5">30 mins (0.5 hrs)</option>
+                <option value="1">1 hour (1.0 hrs)</option>
+                <option value="2">2 hours (2.0 hrs)</option>
+              </select>
             </div>
           </div>
 
