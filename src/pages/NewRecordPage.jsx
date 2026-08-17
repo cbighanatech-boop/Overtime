@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { logActivity } from '../utils/auditLogger'
 import { useAuth } from '../context/AuthContext'
+import { getRateMultiplier } from '../utils/multiplierHelper'
 import { 
   ArrowLeft, 
   Save, 
@@ -48,6 +49,8 @@ export const NewRecordPage = () => {
   const [description, setDescription] = useState('')
   const [reason, setReason] = useState('Holiday')
   const [otherReason, setOtherReason] = useState('')
+  const [holidays, setHolidays] = useState([])
+  const [liveTotalPayout, setLiveTotalPayout] = useState(0)
 
   // Quick Add Employee Modal State
   const [quickAddOpen, setQuickAddOpen] = useState(false)
@@ -119,11 +122,17 @@ export const NewRecordPage = () => {
     return fetchEmployees // expose for refresh
   }, [profile])
 
-  // Fetch departments for quick-add modal
+  // Fetch departments for quick-add modal and holidays
   useEffect(() => {
     supabase.from('departments').select('*').order('name').then(({ data }) => {
       setDepartments(data || [])
       if (data?.length > 0) setQaDepartmentId(data[0].id)
+    })
+
+    // Fetch holidays from db
+    supabase.from('holidays').select('holiday_date').then(({ data, error }) => {
+      if (error) console.error('Error fetching holidays:', error.message)
+      else setHolidays(data?.map(h => h.holiday_date) || [])
     })
   }, [])
 
@@ -192,6 +201,7 @@ export const NewRecordPage = () => {
     if (!timeIn || !timeOut) {
       setLiveHours(0)
       setLivePayout(0)
+      setLiveTotalPayout(0)
       return
     }
 
@@ -211,45 +221,63 @@ export const NewRecordPage = () => {
     
     setLiveHours(calculatedHours)
 
-    let baseRate = Number(hourlyRate);
-    if (!baseRate && selectedEmployeeIds.length > 0) {
-      const firstEmp = employees.find(e => e.id === selectedEmployeeIds[0]);
-      baseRate = Number(firstEmp?.hourly_rate) || 0;
-    } else if (!baseRate) {
-      baseRate = 0;
-    }
+    const isHoliday = holidays.includes(date)
+    let totalCost = 0
+    let firstEmpPayout = 0
 
-    const mult = Number(rateMultiplier) || 0
-    const payout = calculatedHours * baseRate * mult
-    setLivePayout(Number(payout.toFixed(2)))
-  }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees])
+    selectedEmployeeIds.forEach((empId, index) => {
+      const emp = employees.find(e => e.id === empId)
+      if (!emp) return
+      
+      const empRate = hourlyRate ? Number(hourlyRate) : (Number(emp.hourly_rate) || 0)
+      const empMult = Number(getRateMultiplier({
+        company: emp.company,
+        category: emp.category,
+        date,
+        isHoliday,
+        reason
+      })) || 1.5
 
-  // Adjust rate multiplier and reason options dynamically based on selected employees' company & category
+      const payout = calculatedHours * empRate * empMult
+      totalCost += payout
+      if (index === 0) {
+        firstEmpPayout = payout
+      }
+    })
+
+    setLivePayout(Number(firstEmpPayout.toFixed(2)))
+    setLiveTotalPayout(Number(totalCost.toFixed(2)))
+  }, [timeIn, timeOut, hourlyRate, rateMultiplier, selectedEmployeeIds, employees, date, holidays, reason])
+
+  // Adjust rate multiplier and reason options dynamically based on selected employees' company, category, date, and reason
   useEffect(() => {
     if (selectedEmployeeIds.length === 0) return
 
     const selectedEmps = employees.filter(emp => selectedEmployeeIds.includes(emp.id))
-    const hasCBI = selectedEmps.some(emp => emp.company?.toUpperCase() === 'CBI')
-    const hasAbanach = selectedEmps.some(emp => emp.company?.toUpperCase() === 'ABANACH')
-    const hasShift = selectedEmps.some(emp => emp.category === 'Shift')
-    const hasStraightDay = selectedEmps.some(emp => emp.category === 'Straight Day')
+    
+    // Check if they all share the same company and category
+    const sameCompany = selectedEmps.every(emp => emp.company?.toUpperCase() === selectedEmps[0].company?.toUpperCase())
+    const sameCategory = selectedEmps.every(emp => emp.category === selectedEmps[0].category)
 
-    // Handle Rate Multiplier adjustment
-    if (hasCBI && !hasAbanach) {
-      if (rateMultiplier !== '1.5' && rateMultiplier !== '2') {
-        setRateMultiplier('1.5')
-      }
-    } else if (hasAbanach && !hasCBI) {
-      if (rateMultiplier !== '1' && rateMultiplier !== '1.5') {
-        setRateMultiplier('1.5')
-      }
-    } else if (hasCBI && hasAbanach) {
-      if (rateMultiplier !== '1.5') {
-        setRateMultiplier('1.5')
-      }
+    if (sameCompany && sameCategory && selectedEmps.length > 0) {
+      const isHoliday = holidays.includes(date)
+      const computedMult = getRateMultiplier({
+        company: selectedEmps[0].company,
+        category: selectedEmps[0].category,
+        date,
+        isHoliday,
+        reason
+      })
+      setRateMultiplier(computedMult)
+    } else if (selectedEmps.length > 0) {
+      // Mixed selection
+      setRateMultiplier('Auto')
     }
 
     // Handle Reason adjustment
+    const hasShift = selectedEmps.some(emp => emp.category === 'Shift')
+    const hasStraightDay = selectedEmps.some(emp => emp.category === 'Straight Day')
+
     if (reason) {
       const isShiftReason = reason.includes('(Shift Only)')
       const isStraightDayReason = reason.includes('(Straight Day Only)')
@@ -260,7 +288,7 @@ export const NewRecordPage = () => {
         setReason('')
       }
     }
-  }, [selectedEmployeeIds, employees, rateMultiplier, reason])
+  }, [selectedEmployeeIds, employees, date, holidays, reason])
 
   // Filter employees based on search text
   const filteredEmployees = employees.filter(emp => {
@@ -327,6 +355,7 @@ export const NewRecordPage = () => {
 
     setSubmitting(true)
     try {
+      const isHoliday = holidays.includes(date)
       const rows = await Promise.all(selectedEmployeeIds.map(async empId => {
         const selectedEmployee = employees.find(emp => emp.id === empId);
         let empRate = hourlyRate ? Number(hourlyRate) : (Number(selectedEmployee.hourly_rate) || 0);
@@ -356,7 +385,14 @@ export const NewRecordPage = () => {
         if (outMins < inMins) outMins += 24 * 60;
         const calcHours = Number(((outMins - inMins) / 60).toFixed(2));
 
-        const empPayout = Number((calcHours * empRate * Number(rateMultiplier)).toFixed(2));
+        const empMult = getRateMultiplier({
+          company: selectedEmployee.company,
+          category: selectedEmployee.category,
+          date,
+          isHoliday,
+          reason: reason === 'Others' ? otherReason.trim() : reason
+        })
+        const empPayout = Number((calcHours * empRate * Number(empMult)).toFixed(2));
         
         return {
           employee_name: selectedEmployee.full_name,
@@ -367,7 +403,7 @@ export const NewRecordPage = () => {
           time_in: timeIn,
           time_out: timeOut,
           hourly_rate: empRate,
-          rate_multiplier: Number(rateMultiplier),
+          rate_multiplier: Number(empMult),
           estimated_payout: empPayout,
           description: description.trim(),
           reason: reason === 'Others' ? otherReason.trim() : reason,
@@ -637,27 +673,30 @@ export const NewRecordPage = () => {
                 required
                 value={rateMultiplier}
                 onChange={(e) => setRateMultiplier(e.target.value)}
-                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer"
-                disabled={submitting}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
+                disabled={submitting || rateMultiplier === 'Auto'}
               >
-                {(() => {
-                  const selectedEmps = employees.filter(emp => selectedEmployeeIds.includes(emp.id))
-                  const hasCBI = selectedEmps.some(emp => emp.company?.toUpperCase() === 'CBI')
-                  const hasAbanach = selectedEmps.some(emp => emp.company?.toUpperCase() === 'ABANACH')
-
-                  const show1_0 = !hasCBI
-                  const show1_5 = true
-                  const show2_0 = !hasAbanach
-
-                  return (
-                    <>
-                      {show1_0 && <option value="1">1.0x (Straight Time)</option>}
-                      {show1_5 && <option value="1.5">1.5x (Standard Overtime)</option>}
-                      {show2_0 && <option value="2">2.0x (Sunday / Public Holiday)</option>}
-                    </>
-                  )
-                })()}
+                {rateMultiplier === 'Auto' ? (
+                  <option value="Auto">Auto-calculated per employee</option>
+                ) : (
+                  <>
+                    <option value="1">1.0x (Straight Time)</option>
+                    <option value="1.5">1.5x (Standard Overtime)</option>
+                    <option value="2">2.0x (Sunday / Public Holiday)</option>
+                  </>
+                )}
               </select>
+              {rateMultiplier === 'Auto' ? (
+                <p className="text-[10px] text-gray-500 mt-1.5 flex items-center gap-1 font-semibold">
+                  <Info size={12} className="text-amber-500" />
+                  Mixed groups selected. Multipliers auto-calculated per employee.
+                </p>
+              ) : (
+                <p className="text-[10px] text-gray-500 mt-1.5 flex items-center gap-1 font-semibold">
+                  <CheckCircle2 size={12} className="text-[#006939]" />
+                  Automatically determined by rules for company, category, date, and reason.
+                </p>
+              )}
             </div>
           </div>
 
@@ -683,7 +722,9 @@ export const NewRecordPage = () => {
               {isAdmin(profile) && (
                 <>
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
-                    <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Payout / Employee</p>
+                    <p className="text-xs text-white/60 font-bold uppercase tracking-wider">
+                      {selectedEmployeeIds.length > 1 && rateMultiplier === 'Auto' ? 'Est. Payout (First Emp)' : 'Payout / Employee'}
+                    </p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
                       GHS {safeCurrency(livePayout)}
                     </p>
@@ -691,7 +732,7 @@ export const NewRecordPage = () => {
                   <div className="border-l border-white/20 pl-6 sm:pl-8">
                     <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Total Bulk Cost</p>
                     <p className="text-3xl font-[900] text-[#FDB913] mt-1">
-                      GHS {safeCurrency(livePayout * selectedEmployeeIds.length)}
+                      GHS {safeCurrency(liveTotalPayout)}
                     </p>
                   </div>
                 </>

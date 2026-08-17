@@ -652,7 +652,16 @@ export const RecordsPage = () => {
                     
                     {/* Status Badge */}
                     <td className="px-6 py-4">
-                      {getStatusBadge(rec)}
+                      <div className="flex flex-col gap-1">
+                        {getStatusBadge(rec)}
+                        {rec.reviewed_at && (
+                          <span className="text-[10px] text-gray-400 font-semibold mt-0.5 whitespace-nowrap">
+                            {rec.reviewed_at && !isNaN(parseISO(rec.reviewed_at))
+                              ? format(parseISO(rec.reviewed_at), 'MMM dd, yyyy, h:mm a')
+                              : String(rec.reviewed_at)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     
                     {/* Description cell */}

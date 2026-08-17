@@ -9,6 +9,7 @@ const safeCurrency = (value) => {
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { useAuth } from '../context/AuthContext'
+import { getRateMultiplier } from '../utils/multiplierHelper'
 import { 
   ArrowLeft, 
   Save, 
@@ -19,7 +20,8 @@ import {
   Calculator,
   Calendar,
   Loader2,
-  Info
+  Info,
+  CheckCircle2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { canEditRecord, isAdmin } from '../utils/roleHelpers'
@@ -49,6 +51,7 @@ export const EditRecordPage = () => {
   const [otherReason, setOtherReason] = useState('')
   const [employeeCompany, setEmployeeCompany] = useState('')
   const [employeeCategory, setEmployeeCategory] = useState('Shift')
+  const [holidays, setHolidays] = useState([])
 
   // Computed Live Fields
   const [liveHours, setLiveHours] = useState(0)
@@ -151,6 +154,14 @@ export const EditRecordPage = () => {
     }
   }, [id, profile])
 
+  // Fetch holidays on mount
+  useEffect(() => {
+    supabase.from('holidays').select('holiday_date').then(({ data, error }) => {
+      if (error) console.error('Error fetching holidays:', error.message)
+      else setHolidays(data?.map(h => h.holiday_date) || [])
+    })
+  }, [])
+
   // Live calculator hook
   useEffect(() => {
     if (!timeIn || !timeOut) {
@@ -185,18 +196,15 @@ export const EditRecordPage = () => {
   useEffect(() => {
     if (!employeeCompany && !employeeCategory) return
 
-    const isCBI = employeeCompany?.toUpperCase() === 'CBI'
-    const isAbanach = employeeCompany?.toUpperCase() === 'ABANACH'
-
-    if (isCBI) {
-      if (rateMultiplier !== '1.5' && rateMultiplier !== '2') {
-        setRateMultiplier('1.5')
-      }
-    } else if (isAbanach) {
-      if (rateMultiplier !== '1' && rateMultiplier !== '1.5') {
-        setRateMultiplier('1.5')
-      }
-    }
+    const isHoliday = holidays.includes(date)
+    const computedMult = getRateMultiplier({
+      company: employeeCompany,
+      category: employeeCategory,
+      date,
+      isHoliday,
+      reason
+    })
+    setRateMultiplier(computedMult)
 
     if (reason) {
       const isShiftReason = reason.includes('(Shift Only)')
@@ -208,7 +216,7 @@ export const EditRecordPage = () => {
         setReason('Holiday')
       }
     }
-  }, [employeeCompany, employeeCategory, rateMultiplier, reason])
+  }, [employeeCompany, employeeCategory, date, holidays, reason])
 
   // Handle Form submission
   const handleSubmit = async (e) => {
@@ -256,15 +264,27 @@ export const EditRecordPage = () => {
 
       const currentDate = recordDate || date
       const nextRate = Number(hourlyRate)
+      
+      const isHoliday = holidays.includes(date)
+      const empMult = getRateMultiplier({
+        company: employeeCompany,
+        category: employeeCategory,
+        date,
+        isHoliday,
+        reason: reason === 'Others' ? otherReason.trim() : reason
+      })
+      const finalMult = Number(empMult)
+      const finalPayout = Number((liveHours * nextRate * finalMult).toFixed(2))
+
       const { error } = await supabase
         .from('overtime_records')
         .update({
           work_date: date,
           time_in: timeIn,
           time_out: timeOut,
-          hourly_rate: Number(hourlyRate),
-          rate_multiplier: Number(rateMultiplier),
-          estimated_payout: livePayout,
+          hourly_rate: nextRate,
+          rate_multiplier: finalMult,
+          estimated_payout: finalPayout,
           reason: reason === 'Others' ? otherReason.trim() : reason,
           description: description.trim()
         })
@@ -422,26 +442,17 @@ export const EditRecordPage = () => {
                 required
                 value={rateMultiplier}
                 onChange={(e) => setRateMultiplier(e.target.value)}
-                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
-                disabled={submitting}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium text-gray-500 bg-gray-50"
+                disabled={true}
               >
-                {(() => {
-                  const isCBI = employeeCompany?.toUpperCase() === 'CBI'
-                  const isAbanach = employeeCompany?.toUpperCase() === 'ABANACH'
-
-                  const show1_0 = !isCBI
-                  const show1_5 = true
-                  const show2_0 = !isAbanach
-
-                  return (
-                    <>
-                      {show1_0 && <option value="1">1.0x (Straight Time)</option>}
-                      {show1_5 && <option value="1.5">1.5x (Standard Overtime)</option>}
-                      {show2_0 && <option value="2">2.0x (Sunday / Public Holiday)</option>}
-                    </>
-                  )
-                })()}
+                <option value="1">1.0x (Straight Time)</option>
+                <option value="1.5">1.5x (Standard Overtime)</option>
+                <option value="2">2.0x (Sunday / Public Holiday)</option>
               </select>
+              <p className="text-[10px] text-gray-500 mt-1.5 flex items-center gap-1 font-semibold">
+                <CheckCircle2 size={12} className="text-[#006939]" />
+                Automatically determined by rules for company, category, date, and reason.
+              </p>
             </div>
           </div>
 

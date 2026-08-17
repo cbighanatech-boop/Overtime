@@ -16,6 +16,7 @@ import NewEmployeePage from '../pages/NewEmployeePage'
 import DepartmentsPage from '../pages/DepartmentsPage'
 import DepartmentDetailsPage from '../pages/DepartmentDetailsPage'
 import AuditTrailPage from '../pages/AuditTrailPage' // New import
+import HolidaysPage from '../pages/HolidaysPage'
 
 // Import PageWrapper
 import PageWrapper from '../components/layout/PageWrapper'
@@ -149,6 +150,16 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AuditTrailPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Holiday Management - Admin only */}
+        <Route
+          path="/holidays"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <HolidaysPage />
             </ProtectedRoute>
           }
         />

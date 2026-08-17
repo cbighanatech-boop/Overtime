@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Activity
+  Activity,
+  Calendar
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 
@@ -59,6 +60,12 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
       name: 'Audit Trail',
       path: '/audit',
       icon: Activity,
+      roles: ['admin']
+    },
+    {
+      name: 'Holidays',
+      path: '/holidays',
+      icon: Calendar,
       roles: ['admin']
     }
   ]
