@@ -733,8 +733,8 @@ export const NewRecordPage = () => {
                 required
                 value={rateMultiplier}
                 onChange={(e) => setRateMultiplier(e.target.value)}
-                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
-                disabled={submitting || rateMultiplier === 'Auto'}
+                className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium text-gray-500 bg-gray-50"
+                disabled={true}
               >
                 {rateMultiplier === 'Auto' ? (
                   <option value="Auto">Auto-calculated per employee</option>
