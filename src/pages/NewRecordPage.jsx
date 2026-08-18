@@ -338,7 +338,7 @@ export const NewRecordPage = () => {
       return
     }
 
-    if (blockedWindows?.length > 0) {
+    if (blockedWindows?.length > 0 && !isAdmin(profile)) {
       // Check if any selected employee falls into a block
       for (const block of blockedWindows) {
         const affectedEmployees = employees.filter(emp => selectedEmployeeIds.includes(emp.id)).filter(emp => {

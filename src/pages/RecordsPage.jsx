@@ -260,48 +260,68 @@ export const RecordsPage = () => {
     if (!profile) return
     setExportLoading(true)
     try {
-      // Build same query as fetchRecords but without pagination
-      let query = supabase
-        .from('overtime_records')
-        .select(`*, departments (name)`, { count: 'exact' })
+      let allRecords = []
+      let from = 0
+      let to = 999
+      let hasMore = true
 
-      if (!profile.role || profile.role === 'admin') {
-        if (selectedDept) query = query.eq('department_id', selectedDept)
-      } else {
-        query = query.eq('department_id', profile.department_id)
-      }
+      while (hasMore) {
+        let query = supabase
+          .from('overtime_records')
+          .select(`*, departments (name)`, { count: 'exact' })
+          .range(from, to)
 
-      if (selectedStatus) query = query.eq('status', selectedStatus)
-      if (searchText.trim()) query = query.ilike('employee_name', `%${searchText.trim()}%`)
-      if (startDate) query = query.gte('work_date', startDate)
-      if (endDate) query = query.lte('work_date', endDate)
-
-      if (selectedReason) {
-        if (selectedReason === 'Others') {
-          query = query.not('reason', 'in', [
-            'Holiday',
-            'Replacement',
-            'Replacement - Extended Hours (Shift Only)',
-            'Replacement - Day_Off (Shift Only)',
-            'Normal Routine Schedule',
-            'Normal Routine Schedule (Straight Day Only)',
-            'PM',
-            'Weekend (Straight Day Only)'
-          ])
+        if (!profile.role || profile.role === 'admin') {
+          if (selectedDept) query = query.eq('department_id', selectedDept)
         } else {
-          query = query.eq('reason', selectedReason)
+          query = query.eq('department_id', profile.department_id)
+        }
+
+        if (selectedStatus) query = query.eq('status', selectedStatus)
+        if (searchText.trim()) query = query.ilike('employee_name', `%${searchText.trim()}%`)
+        if (startDate) query = query.gte('work_date', startDate)
+        if (endDate) query = query.lte('work_date', endDate)
+
+        if (selectedReason) {
+          if (selectedReason === 'Others') {
+            query = query.not('reason', 'in', [
+              'Holiday',
+              'Replacement',
+              'Replacement - Extended Hours (Shift Only)',
+              'Replacement - Day_Off (Shift Only)',
+              'Normal Routine Schedule',
+              'Normal Routine Schedule (Straight Day Only)',
+              'PM',
+              'Weekend (Straight Day Only)'
+            ])
+          } else {
+            query = query.eq('reason', selectedReason)
+          }
+        }
+
+        if (selectedShiftType) {
+          query = query.eq('shift_type', selectedShiftType)
+        }
+
+        // Order newest first
+        query = query.order('work_date', { ascending: false })
+
+        const { data: recordsChunk, error } = await query
+        if (error) throw error
+        
+        if (recordsChunk && recordsChunk.length > 0) {
+          allRecords.push(...recordsChunk)
+        }
+
+        if (!recordsChunk || recordsChunk.length < 1000) {
+          hasMore = false
+        } else {
+          from += 1000
+          to += 1000
         }
       }
-
-      if (selectedShiftType) {
-        query = query.eq('shift_type', selectedShiftType)
-      }
-
-      // Order newest first
-      query = query.order('work_date', { ascending: false })
-
-      const { data, error } = await query
-      if (error) throw error
+      
+      const data = allRecords
 
       // Convert to worksheet
       const worksheet = XLSX.utils.json_to_sheet(data.map(rec => ({
@@ -309,6 +329,8 @@ export const RecordsPage = () => {
         Employee: rec.employee_name,
         Department: rec.departments?.name,
         Date: rec.work_date,
+        "Time In": rec.time_in,
+        "Time Out": rec.time_out,
         "1.0x Hours": Number(rec.rate_multiplier) === 1 ? rec.overtime_hours : '',
         "1.5x Hours": Number(rec.rate_multiplier) === 1.5 ? rec.overtime_hours : '',
         "2.0x Hours": Number(rec.rate_multiplier) === 2 ? rec.overtime_hours : '',

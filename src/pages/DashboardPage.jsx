@@ -362,19 +362,42 @@ export const DashboardPage = () => {
       // 2. Overtime records
       const { startDate, endDate } = getDateRange(dateFilter, customDateRange)
       
-      let recordsQuery = supabase
-        .from('overtime_records')
-        .select(`
-          *,
-          departments (name)
-        `)
-        .gte('work_date', startDate)
-        .lte('work_date', endDate)
-      if (!isAdmin(profile)) {
-        recordsQuery = recordsQuery.eq('department_id', profile.department_id)
+      let allRecords = []
+      let from = 0
+      let to = 999
+      let hasMore = true
+
+      while (hasMore) {
+        let recordsQuery = supabase
+          .from('overtime_records')
+          .select(`
+            *,
+            departments (name)
+          `)
+          .gte('work_date', startDate)
+          .lte('work_date', endDate)
+          .range(from, to)
+          
+        if (!isAdmin(profile)) {
+          recordsQuery = recordsQuery.eq('department_id', profile.department_id)
+        }
+        
+        const { data: recordsChunk, error: recordsErr } = await recordsQuery
+        if (recordsErr) throw recordsErr
+
+        if (recordsChunk && recordsChunk.length > 0) {
+          allRecords.push(...recordsChunk)
+        }
+
+        if (!recordsChunk || recordsChunk.length < 1000) {
+          hasMore = false
+        } else {
+          from += 1000
+          to += 1000
+        }
       }
-      const { data: records, error: recordsErr } = await recordsQuery
-      if (recordsErr) throw recordsErr
+      
+      const records = allRecords
 
       // Aggregate metrics
       let totalHours = 0

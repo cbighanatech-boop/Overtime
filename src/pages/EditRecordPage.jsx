@@ -263,7 +263,7 @@ export const EditRecordPage = () => {
 
       if (blockLookupError) throw blockLookupError
 
-      if (blockedWindows?.length > 0) {
+      if (blockedWindows?.length > 0 && !isAdmin(profile)) {
         // Fetch the target employee's company to check scope
         const { data: empData } = await supabase.from('profiles').select('id, company, department_id').eq('staff_id', recordEmployeeId).single()
         
