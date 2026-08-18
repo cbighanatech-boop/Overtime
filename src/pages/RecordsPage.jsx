@@ -331,6 +331,8 @@ export const RecordsPage = () => {
         Date: rec.work_date,
         "Time In": rec.time_in,
         "Time Out": rec.time_out,
+        "Full Work": rec.full_work ? "Yes" : "No",
+        "Deduct Break Time": rec.break_hours,
         "1.0x Hours": Number(rec.rate_multiplier) === 1 ? rec.overtime_hours : '',
         "1.5x Hours": Number(rec.rate_multiplier) === 1.5 ? rec.overtime_hours : '',
         "2.0x Hours": Number(rec.rate_multiplier) === 2 ? rec.overtime_hours : '',
