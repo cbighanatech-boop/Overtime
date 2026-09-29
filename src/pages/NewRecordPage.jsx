@@ -325,13 +325,15 @@ export const NewRecordPage = () => {
       return
     }
 
-    // Rep-specific validation: entries older than 7 days require Admin approval
+    // Rep-specific validation: entries older than 7 days are timed out automatically
+    let isRepTimedOut = false;
     if (isRep(profile)) {
       const selectedDate = new Date(date);
       const today = new Date();
       const diffDays = (today - selectedDate) / (1000 * 60 * 60 * 24);
       if (diffDays > 7) {
-        toast.info("This entry is older than 7 days. It will require Admin approval before a Supervisor can validate it.");
+        isRepTimedOut = true;
+        toast.info("This entry is being timed out because the entry date is 7 days or older. Only an Admin can restate it for Supervisor validation.", { duration: 6000 });
       }
     }
 
@@ -444,7 +446,7 @@ export const NewRecordPage = () => {
           description: description.trim(),
           reason: reason === 'Others' ? otherReason.trim() : reason,
           captured_by: profile.id,
-          status: 'Pending'
+          status: isRepTimedOut ? 'Timed Out' : 'Pending'
         };
       }))
 
