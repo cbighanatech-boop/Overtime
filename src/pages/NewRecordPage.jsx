@@ -325,6 +325,16 @@ export const NewRecordPage = () => {
       return
     }
 
+    // Rep-specific validation: entries older than 7 days require Admin approval
+    if (isRep(profile)) {
+      const selectedDate = new Date(date);
+      const today = new Date();
+      const diffDays = (today - selectedDate) / (1000 * 60 * 60 * 24);
+      if (diffDays > 7) {
+        toast.info("This entry is older than 7 days. It will require Admin approval before a Supervisor can validate it.");
+      }
+    }
+
     const targetDateTime = new Date(`${date}T${timeIn}:00`).toISOString()
     const { data: blockedWindows, error: blockLookupError } = await supabase
       .from('admin_entry_blocks')
