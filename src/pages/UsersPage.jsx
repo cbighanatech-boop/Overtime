@@ -13,13 +13,16 @@ import {
   UserCheck,
   FolderOpen,
   Trash2,
-  Edit2
+  Edit2,
+  Clock4
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
+import ExtraHoursPage from './ExtraHoursPage'
 
 export const UsersPage = () => {
   const { profile } = useAuth()
+  const [activeTab, setActiveTab] = useState('directory') // 'directory' | 'extra-hours'
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchText, setSearchText] = useState('')
@@ -286,11 +289,48 @@ export const UsersPage = () => {
 
   return (
     <div className="space-y-6 font-sans">
+
+      {/* ── Tab Navigation ──────────────────────────────────────────────── */}
+      <div className="flex items-end gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('directory')}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-lg border border-b-0 transition-all ${
+            activeTab === 'directory'
+              ? 'bg-white text-[#006939] border-gray-200 shadow-sm -mb-px z-10'
+              : 'bg-gray-50 text-gray-500 border-transparent hover:text-gray-700'
+          }`}
+        >
+          <Users size={15} />
+          User &amp; Employee Directory
+        </button>
+        {profile?.role === 'admin' && (
+          <button
+            onClick={() => setActiveTab('extra-hours')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-lg border border-b-0 transition-all ${
+              activeTab === 'extra-hours'
+                ? 'bg-white text-[#006939] border-gray-200 shadow-sm -mb-px z-10'
+                : 'bg-gray-50 text-gray-500 border-transparent hover:text-gray-700'
+            }`}
+          >
+            <Clock4 size={15} />
+            Extra Hours
+          </button>
+        )}
+      </div>
+
+      {/* ── Extra Hours Tab ──────────────────────────────────────────────── */}
+      {activeTab === 'extra-hours' && profile?.role === 'admin' && (
+        <ExtraHoursPage />
+      )}
+
+      {/* ── Directory Tab ────────────────────────────────────────────────── */}
+      {activeTab === 'directory' && (
+      <>
       {/* Directory Title Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-[900] text-[#1A1A1A] uppercase tracking-tight font-sans">
-            User & Employee Directory
+            User &amp; Employee Directory
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             Manage system operators (Users) and subjects (Employees). Assign roles, departments, and lock deactivated accounts.
@@ -537,6 +577,8 @@ export const UsersPage = () => {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }

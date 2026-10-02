@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Shield,
   Activity,
-  Calendar
+  Calendar,
+  Clock4
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 
@@ -66,6 +67,12 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
       name: 'Holidays',
       path: '/holidays',
       icon: Calendar,
+      roles: ['admin']
+    },
+    {
+      name: 'Extra Hours',
+      path: '/extra-hours',
+      icon: Clock4,
       roles: ['admin']
     }
   ]

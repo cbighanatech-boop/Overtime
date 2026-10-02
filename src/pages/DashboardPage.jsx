@@ -20,7 +20,8 @@ import {
   Tag,
   ShieldBan,
   Trash2,
-  Loader2
+  Loader2,
+  Clock4
 } from 'lucide-react'
 import { 
   AreaChart, 
@@ -166,6 +167,7 @@ export const DashboardPage = () => {
   const [trendView, setTrendView] = useState('day') // 'day' | 'month'
   const [reasonCostData, setReasonCostData] = useState([])
   const [deptCostData, setDeptCostData] = useState([])
+  const [extraHoursMetrics, setExtraHoursMetrics] = useState({ totalEntries: 0, totalHours: 0, totalCost: 0 })
   
   // Date filter state
   const [dateFilter, setDateFilter] = useState('all') // 'all' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom'
@@ -185,6 +187,25 @@ export const DashboardPage = () => {
   const [activeBlocks, setActiveBlocks] = useState([])
   const [loadingBlocks, setLoadingBlocks] = useState(false)
   const [deletingBlockId, setDeletingBlockId] = useState(null)
+
+  // Fetch Extra Hours metrics (admin only)
+  const fetchExtraHoursMetrics = async () => {
+    if (!isAdmin(profile)) return
+    try {
+      const { data, error } = await supabase
+        .from('extra_hours')
+        .select('hours_assigned, total_cost, status')
+      if (error) throw error
+      const rows = data || []
+      setExtraHoursMetrics({
+        totalEntries: rows.length,
+        totalHours:   rows.reduce((s, r) => s + Number(r.hours_assigned || 0), 0),
+        totalCost:    rows.reduce((s, r) => s + Number(r.total_cost || 0), 0),
+      })
+    } catch (err) {
+      console.error('Failed to load extra hours metrics:', err.message)
+    }
+  }
 
   // Fetch existing block windows
   const fetchBlocks = async () => {
@@ -568,6 +589,7 @@ export const DashboardPage = () => {
       fetchBlocks()
       fetchDepartments()
       fetchTimedOutRecords()
+      fetchExtraHoursMetrics()
     }
     const channel = supabase
       .channel('live-dashboard-records')
@@ -1081,6 +1103,42 @@ export const DashboardPage = () => {
           </div>
         ) : null}
       </div>
+
+      {/* ── ADMIN: Extra Hours Summary Card ─────────────────────────────── */}
+      {isAdmin(profile) && (
+        <div className="bg-gradient-to-br from-[#0277BD] to-[#01579B] p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 bg-white/15 rounded-2xl shrink-0">
+                <Clock4 size={24} className="text-[#FDB913]" />
+              </div>
+              <div>
+                <p className="text-xs text-white/60 font-bold uppercase tracking-widest">Extra Hours (All Time)</p>
+                <p className="text-3xl font-[900] text-white mt-1 tracking-tight">
+                  {extraHoursMetrics.totalHours.toFixed(1)}
+                  <span className="text-sm font-bold text-white/60 ml-1">HRS</span>
+                </p>
+                <p className="text-xs text-white/50 mt-0.5">
+                  {extraHoursMetrics.totalEntries} approved entr{extraHoursMetrics.totalEntries !== 1 ? 'ies' : 'y'} across all months
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:items-end gap-1">
+              <p className="text-xs text-white/60 font-bold uppercase tracking-widest">Total Extra Cost</p>
+              <p className="text-2xl font-[900] text-[#FDB913]">
+                {formatCurrency(extraHoursMetrics.totalCost)}
+              </p>
+              <a
+                href="/users"
+                onClick={e => { e.preventDefault(); window.location.href = '/users' }}
+                className="text-xs text-white/70 hover:text-white underline mt-1 transition-colors"
+              >
+                Manage in Users → Extra Hours tab
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── ROW 2: New KPI Spotlight Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
