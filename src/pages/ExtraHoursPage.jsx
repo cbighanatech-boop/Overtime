@@ -198,7 +198,7 @@ export const ExtraHoursPage = () => {
             </div>
             <div className="p-2.5 bg-blue-50 rounded-xl text-[#0288D1] shrink-0"><Users size={18} /></div>
           </div>
-          <p className="text-xs text-gray-400 pl-2">Employees with hours > 0</p>
+          <p className="text-xs text-gray-400 pl-2">Employees with hours &gt; 0</p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden flex flex-col justify-between h-28">
