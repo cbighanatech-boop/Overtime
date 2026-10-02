@@ -50,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_extra_hours_dept    ON public.extra_hours(departm
 ALTER TABLE public.extra_hours ENABLE ROW LEVEL SECURITY;
 
 -- Admin: full access
+DROP POLICY IF EXISTS "Admin full access on extra_hours" ON public.extra_hours;
 CREATE POLICY "Admin full access on extra_hours"
   ON public.extra_hours
   FOR ALL
@@ -67,6 +68,7 @@ CREATE POLICY "Admin full access on extra_hours"
   );
 
 -- Authenticated users: read-only (so dashboard/reports can read)
+DROP POLICY IF EXISTS "Authenticated read extra_hours" ON public.extra_hours;
 CREATE POLICY "Authenticated read extra_hours"
   ON public.extra_hours
   FOR SELECT
