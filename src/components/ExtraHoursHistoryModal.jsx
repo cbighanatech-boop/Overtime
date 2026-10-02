@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
-import { X, Search, Loader2, Download, CalendarDays } from 'lucide-react'
+import { X, Search, Loader2, Download, CalendarDays, CheckCircle2, Edit2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const MONTHS = [
@@ -39,6 +39,7 @@ function exportCSV(rows, month, year) {
 }
 
 export const ExtraHoursHistoryModal = ({ isOpen, onClose }) => {
+  const { profile } = useAuth()
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(currentYear)
   const [searchText, setSearchText] = useState('')
@@ -92,6 +93,72 @@ export const ExtraHoursHistoryModal = ({ isOpen, onClose }) => {
     toast.success('Export downloaded.')
   }
 
+  const handleApprove = async (record) => {
+    try {
+      const { error } = await supabase
+        .from('extra_hours')
+        .update({
+          status: 'Approved',
+          approved_by: profile.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', record.id)
+      
+      if (error) throw error
+      
+      toast.success(`${record.employee_name}'s hours approved.`)
+      setRecords(prev => prev.map(r => r.id === record.id ? { ...r, status: 'Approved' } : r))
+    } catch (err) {
+      console.error('Failed to approve:', err.message)
+      toast.error('Failed to approve hours.')
+    }
+  }
+
+  const handleEdit = async (record) => {
+    const newHours = window.prompt(`Enter new assigned hours for ${record.employee_name}:`, record.hours_assigned)
+    if (newHours === null) return
+    const parsedHours = parseFloat(newHours)
+    if (isNaN(parsedHours) || parsedHours < 0) {
+      toast.error('Please enter a valid positive number.')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('extra_hours')
+        .update({ hours_assigned: parsedHours })
+        .eq('id', record.id)
+
+      if (error) throw error
+      
+      toast.success(`Updated hours for ${record.employee_name}.`)
+      // Refresh to get new total_cost
+      fetchRecords()
+    } catch (err) {
+      console.error('Failed to edit:', err.message)
+      toast.error('Failed to update hours.')
+    }
+  }
+
+  const handleDelete = async (record) => {
+    if (!window.confirm(`Are you sure you want to permanently delete this extra hours entry for ${record.employee_name}?`)) return
+    
+    try {
+      const { error } = await supabase
+        .from('extra_hours')
+        .delete()
+        .eq('id', record.id)
+
+      if (error) throw error
+
+      toast.success(`Entry for ${record.employee_name} deleted.`)
+      setRecords(prev => prev.filter(r => r.id !== record.id))
+    } catch (err) {
+      console.error('Failed to delete:', err.message)
+      toast.error('Failed to delete entry.')
+    }
+  }
+
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
 
   return (
@@ -101,8 +168,8 @@ export const ExtraHoursHistoryModal = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50/50">
           <div>
-            <h2 className="text-xl font-[900] text-[#1A1A1A] tracking-tight">Extra Hours History</h2>
-            <p className="text-sm text-gray-500">View and export previously processed extra hours.</p>
+            <h2 className="text-xl font-[900] text-[#1A1A1A] tracking-tight">Extra Hours History & Review</h2>
+            <p className="text-sm text-gray-500">View, approve, edit, or delete processed extra hours.</p>
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
             <X size={20} />
@@ -171,6 +238,7 @@ export const ExtraHoursHistoryModal = ({ isOpen, onClose }) => {
                   <th className="px-4 py-3 font-bold text-right">Rate</th>
                   <th className="px-4 py-3 font-bold text-right">Total Cost</th>
                   <th className="px-4 py-3 font-bold text-center">Status</th>
+                  <th className="px-4 py-3 font-bold text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
@@ -185,9 +253,42 @@ export const ExtraHoursHistoryModal = ({ isOpen, onClose }) => {
                     <td className="px-4 py-3 text-right text-gray-600">GHS {Number(r.hourly_rate).toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatCurrency(r.total_cost)}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#D1FAE5] text-[#065F46]">
-                        {r.status}
-                      </span>
+                      {r.status === 'Approved' ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#D1FAE5] text-[#065F46]">
+                          Approved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFFDE7] text-[#F57F17] border border-[#FFF9C4]">
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {r.status === 'Pending' && (
+                          <button
+                            onClick={() => handleApprove(r)}
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Approve Entry"
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleEdit(r)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Edit Hours"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(r)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Entry"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

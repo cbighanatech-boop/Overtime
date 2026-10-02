@@ -128,9 +128,9 @@ export const ExtraHoursPage = () => {
             entry_year:    currentYear,
             hours_assigned: hours,
             hourly_rate:    Number(emp.hourly_rate || 0),
-            status:         'Approved',
-            approved_by:    profile.id,
-            approved_at:    new Date().toISOString(),
+            status:         'Pending',
+            approved_by:    null,
+            approved_at:    null,
             created_by:     profile.id,
             notes:          getEditValue(emp.id, 'notes', '') || null,
           })
