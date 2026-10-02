@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
+import { useAuth } from '../context/AuthContext'
 import { X, Search, Loader2, Download, CalendarDays, CheckCircle2, Edit2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
