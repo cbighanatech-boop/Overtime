@@ -250,13 +250,15 @@ export const ExtraHoursPage = () => {
             )}
           </div>
         </div>
+        
+        {/* PROCESSED BUTTON - Made highly visible */}
         <button
           onClick={handleProcessAll}
-          disabled={processing || summary.totalEntries === 0}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={processing}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-[#FDB913] hover:bg-[#e5a711] text-[#004D2A] font-[900] text-base shadow-lg transition-all active:scale-[0.98] border-2 border-[#FDB913]"
         >
-          {processing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-          Processed ({summary.totalEntries})
+          {processing ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={20} />}
+          PROCESSED ({summary.totalEntries})
         </button>
       </div>
 
