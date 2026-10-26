@@ -18,6 +18,7 @@ import DepartmentDetailsPage from '../pages/DepartmentDetailsPage'
 import AuditTrailPage from '../pages/AuditTrailPage' // New import
 import HolidaysPage from '../pages/HolidaysPage'
 import ExtraHoursPage from '../pages/ExtraHoursPage'
+import AdminActionsPage from '../pages/AdminActionsPage'
 
 // Import PageWrapper
 import PageWrapper from '../components/layout/PageWrapper'
@@ -171,6 +172,16 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <ExtraHoursPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Action Items & Reminders - Admin only */}
+        <Route
+          path="/admin-actions"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminActionsPage />
             </ProtectedRoute>
           }
         />

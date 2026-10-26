@@ -8,18 +8,21 @@ import {
   Users, 
   FolderTree, 
   PlusCircle, 
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
-  Activity,
-  Calendar,
-  Clock4
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight, 
+  Shield, 
+  Activity, 
+  Calendar, 
+  Clock4,
+  ClipboardList
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
+import { useActionNotifications } from '../../context/ActionNotificationContext'
 
 export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) => {
   const { profile, logout } = useAuth()
+  const { summary } = useActionNotifications()
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -44,6 +47,12 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
       path: '/records',
       icon: FileText,
       roles: ['admin', 'rep', 'supervisor']
+    },
+    {
+      name: 'Action Items',
+      path: '/admin-actions',
+      icon: ClipboardList,
+      roles: ['admin']
     },
     {
       name: 'Users',
@@ -137,7 +146,7 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
               to={item.path}
               onClick={() => mobileOpen && setMobileOpen(false)}
               className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-150
+                flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-150
                 ${isActive 
                   ? 'bg-[#006939] text-white border-l-4 border-[#FDB913] pl-2 font-bold shadow-md shadow-black/10' 
                   : 'text-white/70 hover:bg-white/5 hover:text-white pl-3'
@@ -145,8 +154,15 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
               `}
               title={collapsed ? item.name : undefined}
             >
-              <Icon className="h-5 w-5 shrink-0" />
-              {(!collapsed || mobileOpen) && <span className="font-sans font-medium">{item.name}</span>}
+              <div className="flex items-center gap-3 overflow-hidden">
+                <Icon className="h-5 w-5 shrink-0" />
+                {(!collapsed || mobileOpen) && <span className="font-sans font-medium truncate">{item.name}</span>}
+              </div>
+              {item.path === '/admin-actions' && (summary?.totalDueAlerts || 0) > 0 && (!collapsed || mobileOpen) && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white shadow-sm">
+                  {summary.totalDueAlerts}
+                </span>
+              )}
             </NavLink>
           )
         })}

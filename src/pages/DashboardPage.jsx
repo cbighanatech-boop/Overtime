@@ -161,10 +161,11 @@ export const DashboardPage = () => {
   })
   const [chartData, setChartData] = useState([])
   const [monthChartData, setMonthChartData] = useState([])
+  const [yearChartData, setYearChartData] = useState([])
   const [deptData, setDeptData] = useState([])
   const [statusData, setStatusData] = useState([])
   const [reasonData, setReasonData] = useState([])
-  const [trendView, setTrendView] = useState('day') // 'day' | 'month'
+  const [trendView, setTrendView] = useState('day') // 'day' | 'month' | 'year'
   const [reasonCostData, setReasonCostData] = useState([])
   const [deptCostData, setDeptCostData] = useState([])
   const [extraHoursMetrics, setExtraHoursMetrics] = useState({ totalEntries: 0, totalHours: 0, totalCost: 0 })
@@ -436,6 +437,7 @@ export const DashboardPage = () => {
       const reasonCostMap = {}
       const trendDayMap = {}
       const trendMonthMap = {}
+      const trendYearMap = {}
       const activeStaffSet = new Set()
 
       if (records) {
@@ -497,6 +499,15 @@ export const DashboardPage = () => {
             }
             trendMonthMap[monthStart].hours += hours
           } catch (_) {}
+
+          // Year trend — store raw year for sorting
+          try {
+            const yearStr = format(parseISO(rec.work_date), 'yyyy')
+            if (!trendYearMap[yearStr]) {
+              trendYearMap[yearStr] = { label: yearStr, hours: 0 }
+            }
+            trendYearMap[yearStr].hours += hours
+          } catch (_) {}
         })
       }
 
@@ -535,6 +546,15 @@ export const DashboardPage = () => {
           hours: Number(trendMonthMap[rawMonth].hours.toFixed(1))
         }))
       setMonthChartData(compiledMonth)
+
+      // Year trend (sorted chronologically)
+      const compiledYear = Object.keys(trendYearMap)
+        .sort()
+        .map(rawYear => ({
+          date: trendYearMap[rawYear].label,
+          hours: Number(trendYearMap[rawYear].hours.toFixed(1))
+        }))
+      setYearChartData(compiledYear)
 
       // Dept chart
       const compiledDept = Object.keys(deptHoursMap).map((dept, idx) => ({
@@ -623,7 +643,12 @@ export const DashboardPage = () => {
     )
   }
 
-  const activeTrendData = trendView === 'day' ? chartData : monthChartData
+  const activeTrendData = 
+    trendView === 'day' 
+      ? chartData 
+      : trendView === 'month' 
+        ? monthChartData 
+        : yearChartData
 
   return (
     <div className="space-y-8 font-sans">
@@ -1220,7 +1245,7 @@ export const DashboardPage = () => {
               </h4>
               <p className="text-xs text-gray-400 mt-0.5">Cumulative hours over time</p>
             </div>
-            {/* Day / Month toggle */}
+            {/* Day / Month / Year toggle */}
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setTrendView('day')}
@@ -1233,6 +1258,12 @@ export const DashboardPage = () => {
                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${trendView === 'month' ? 'bg-[#006939] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 By Month
+              </button>
+              <button
+                onClick={() => setTrendView('year')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${trendView === 'year' ? 'bg-[#006939] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                By Year
               </button>
             </div>
           </div>
