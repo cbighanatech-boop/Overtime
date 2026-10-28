@@ -20,6 +20,7 @@ import {
   TrendingUp
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { getEntitlementBreakdown } from '../../utils/leaveHelpers'
 
 // Helper to safely format currency
 const safeCurrency = (value) => {
@@ -80,6 +81,9 @@ export const EmployeeDetailsModal = ({ employee, isOpen, onClose, departmentName
   const approvedCount = overtimeRecords.filter(r => r.status === 'Approved').length
   const pendingCount = overtimeRecords.filter(r => r.status === 'Pending').length
   const declinedCount = overtimeRecords.filter(r => r.status === 'Declined').length
+
+  const isAbanach = employee.company?.toString().trim().toUpperCase() === 'ABANACH'
+  const annualLeaveBreakdown = isAbanach ? null : getEntitlementBreakdown(employee, { name: 'Annual Leave' })
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -239,6 +243,32 @@ export const EmployeeDetailsModal = ({ employee, isOpen, onClose, departmentName
                     {employee.created_at ? format(parseISO(employee.created_at), 'MMM dd, yyyy') : 'N/A'}
                   </span>
                 </div>
+
+                <div>
+                  <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">Date of Engagement (DOE)</span>
+                  <span className="font-semibold text-gray-700">
+                    {employee.date_of_engagement ? format(parseISO(employee.date_of_engagement), 'MMM dd, yyyy') : 'Not set'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">Origin (Native Status)</span>
+                  <span className={`font-bold ${employee.native_status === 'Non-Native' ? 'text-purple-700' : 'text-emerald-700'}`}>
+                    {employee.native_status || 'Native'}
+                  </span>
+                </div>
+
+                {annualLeaveBreakdown && (
+                  <div className="col-span-2 sm:col-span-3 bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
+                    <span className="text-[#006939] font-bold uppercase tracking-wider block text-[10px]">Annual Leave Entitlement</span>
+                    <span className="font-bold text-[#1A1A1A] text-xs">
+                      {annualLeaveBreakdown.entitled} days
+                    </span>
+                    <span className="text-gray-500 text-[11px] ml-1">
+                      ({annualLeaveBreakdown.text})
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

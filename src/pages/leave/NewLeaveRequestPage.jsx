@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canApplyLeave, calculateWorkingDays, getHolidaysInRange, isEligibleForLeave } from '../../utils/leaveHelpers'
+import { canApplyLeave, calculateWorkingDays, getHolidaysInRange, isEligibleForLeave, getEntitlementBreakdown } from '../../utils/leaveHelpers'
 import { notifySupervisorsOfLeaveRequest } from '../../utils/leaveNotificationService'
 import { 
   ArrowLeft, 
@@ -66,6 +66,8 @@ export const NewLeaveRequestPage = () => {
             staff_id,
             department_id,
             company,
+            date_of_engagement,
+            native_status,
             departments (name)
           `)
           .eq('is_active', true)
@@ -157,9 +159,10 @@ export const NewLeaveRequestPage = () => {
           .eq('year', currentYear)
           .maybeSingle()
 
-        // 2. Get leave type default
+        // 2. Get leave type default or dynamic calculation for Annual Leave
         const chosenType = leaveTypes.find(lt => lt.id === selectedLeaveTypeId)
-        const defaultDays = Number(chosenType?.default_days || 0)
+        const breakdown = getEntitlementBreakdown(emp, chosenType, currentYear)
+        const defaultDays = breakdown.entitled
 
         // 3. Count currently approved or pending days this year
         const { data: takenRequests } = await supabase
@@ -177,14 +180,20 @@ export const NewLeaveRequestPage = () => {
           .filter(r => r.status === 'Pending')
           .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
 
-        const entitled = balData ? Number(balData.entitled_days) : defaultDays
+        const entitled = balData && balData.entitled_days !== null && balData.entitled_days !== undefined
+          ? Number(balData.entitled_days)
+          : defaultDays
         const remaining = Math.max(0, entitled - approvedDays)
 
         setBalanceInfo({
           entitled,
           approvedDays,
           pendingDays,
-          remaining
+          remaining,
+          breakdownText: breakdown.text,
+          bonusDays: breakdown.bonusDays,
+          baseDays: breakdown.baseDays,
+          isAnnual: (chosenType?.name || '').trim().toLowerCase() === 'annual leave'
         })
       } catch (err) {
         console.warn('Balance lookup issue:', err.message)
@@ -397,10 +406,16 @@ export const NewLeaveRequestPage = () => {
                   <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-xl flex flex-col justify-center">
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Employee Profile</p>
                     <p className="text-sm font-extrabold text-[#006939] mt-0.5">{selectedEmployee.full_name}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-600 mt-1">
+                    <div className="flex items-center gap-2 text-xs text-gray-600 mt-1 flex-wrap">
                       <span>Staff ID: <strong>{selectedEmployee.staff_id || 'N/A'}</strong></span>
                       <span>•</span>
-                      <span>Dept: <strong>{selectedEmployee.departments?.name || 'General'}</strong></span>
+                      <span>Origin: <strong className={selectedEmployee.native_status === 'Non-Native' ? 'text-purple-700' : 'text-emerald-700'}>{selectedEmployee.native_status || 'Native'}</strong></span>
+                      {selectedEmployee.date_of_engagement && (
+                        <>
+                          <span>•</span>
+                          <span>DOE: <strong>{selectedEmployee.date_of_engagement}</strong></span>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -452,20 +467,27 @@ export const NewLeaveRequestPage = () => {
                 </div>
 
                 {balanceInfo ? (
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2 bg-white rounded-lg border border-gray-100">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Entitled</p>
-                      <p className="text-base font-black text-gray-800 mt-0.5">{balanceInfo.entitled}</p>
+                  <>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 bg-white rounded-lg border border-gray-100">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Entitled</p>
+                        <p className="text-base font-black text-gray-800 mt-0.5">{balanceInfo.entitled}</p>
+                      </div>
+                      <div className="p-2 bg-white rounded-lg border border-gray-100">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Approved</p>
+                        <p className="text-base font-black text-emerald-700 mt-0.5">{balanceInfo.approvedDays}</p>
+                      </div>
+                      <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <p className="text-[10px] text-emerald-800 font-bold uppercase">Available</p>
+                        <p className="text-base font-black text-[#006939] mt-0.5">{balanceInfo.remaining}</p>
+                      </div>
                     </div>
-                    <div className="p-2 bg-white rounded-lg border border-gray-100">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Approved</p>
-                      <p className="text-base font-black text-emerald-700 mt-0.5">{balanceInfo.approvedDays}</p>
-                    </div>
-                    <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Available</p>
-                      <p className="text-base font-black text-[#006939] mt-0.5">{balanceInfo.remaining}</p>
-                    </div>
-                  </div>
+                    {balanceInfo.breakdownText && (
+                      <p className="text-[11px] text-emerald-700 font-semibold mt-2 bg-emerald-50/70 p-1.5 rounded-lg border border-emerald-100">
+                        ℹ️ {balanceInfo.breakdownText}
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <p className="text-xs text-gray-400 mt-3 italic">
                     Select an employee and leave category to preview annual balance.

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { isEligibleForLeave } from '../../utils/leaveHelpers'
+import { isEligibleForLeave, getEntitlementBreakdown } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { 
   Layers, 
@@ -65,6 +65,8 @@ export const LeaveBalancesPage = () => {
           staff_id,
           department_id,
           company,
+          date_of_engagement,
+          native_status,
           departments (name)
         `)
         .eq('is_active', true)
@@ -113,11 +115,15 @@ export const LeaveBalancesPage = () => {
         const staffId = emp.staff_id || emp.full_name
 
         types.forEach(lt => {
-          // Check custom entitled days or fall back to default_days
+          // Check custom entitled days or dynamically calculate from DOE and Native Status
           const customEntry = (customBals || []).find(
             b => b.employee_id === staffId && b.leave_type_id === lt.id
           )
-          const entitled = customEntry ? Number(customEntry.entitled_days) : Number(lt.default_days || 0)
+          
+          const breakdown = getEntitlementBreakdown(emp, lt, selectedYear)
+          const entitled = customEntry && customEntry.entitled_days !== null && customEntry.entitled_days !== undefined
+            ? Number(customEntry.entitled_days)
+            : breakdown.entitled
 
           // Calculate used days from approved requests
           const used = approvedRequests
@@ -132,6 +138,12 @@ export const LeaveBalancesPage = () => {
             departmentName: emp.departments?.name || 'Department',
             departmentId: emp.department_id,
             company: emp.company || 'CBI',
+            dateOfEngagement: emp.date_of_engagement || null,
+            nativeStatus: emp.native_status || 'Native',
+            tenureYears: breakdown.tenureYears ?? null,
+            bonusDays: breakdown.bonusDays ?? 0,
+            baseDays: breakdown.baseDays ?? entitled,
+            breakdownText: breakdown.text ?? '',
             leaveTypeId: lt.id,
             leaveTypeName: lt.name,
             entitledDays: entitled,
@@ -192,11 +204,16 @@ export const LeaveBalancesPage = () => {
           'Employee Name': row.employeeName,
           'Department': row.departmentName,
           'Company': row.company,
+          'DOE': row.dateOfEngagement || 'N/A',
+          'Origin': row.nativeStatus,
+          'Tenure (Yrs)': row.tenureYears !== null && row.tenureYears !== undefined ? row.tenureYears : 'N/A',
           'Leave Category': row.leaveTypeName,
           'Entitled Days': row.entitledDays,
+          'Bonus Days': row.bonusDays || 0,
           'Used Days': row.usedDays,
           'Remaining Days': row.remainingDays,
-          'Utilization (%)': `${pct}%`
+          'Utilization (%)': `${pct}%`,
+          'Breakdown Note': row.breakdownText || ''
         }
       })
 
@@ -207,11 +224,16 @@ export const LeaveBalancesPage = () => {
         { wch: 24 }, // Employee Name
         { wch: 20 }, // Department
         { wch: 12 }, // Company
+        { wch: 14 }, // DOE
+        { wch: 14 }, // Origin
+        { wch: 14 }, // Tenure
         { wch: 20 }, // Leave Category
         { wch: 14 }, // Entitled Days
+        { wch: 12 }, // Bonus Days
         { wch: 12 }, // Used Days
         { wch: 16 }, // Remaining Days
-        { wch: 16 }  // Utilization
+        { wch: 16 }, // Utilization
+        { wch: 36 }  // Breakdown Note
       ]
 
       const workbook = XLSX.utils.book_new()
@@ -368,8 +390,23 @@ export const LeaveBalancesPage = () => {
                   return (
                     <tr key={`${row.employeeId}-${row.leaveTypeId}-${idx}`} className="hover:bg-gray-50/60 transition-colors">
                       <td className="py-3.5 px-6">
-                        <p className="font-bold text-gray-900">{row.employeeName}</p>
-                        <p className="text-[11px] text-gray-400">ID: {row.employeeId}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-900">{row.employeeName}</p>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            row.nativeStatus === 'Non-Native' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {row.nativeStatus}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
+                          <span>ID: {row.employeeId}</span>
+                          {row.dateOfEngagement && (
+                            <>
+                              <span>•</span>
+                              <span>DOE: {row.dateOfEngagement}</span>
+                            </>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-6 text-gray-600">
                         {row.departmentName}
@@ -378,7 +415,12 @@ export const LeaveBalancesPage = () => {
                         {row.leaveTypeName}
                       </td>
                       <td className="py-3.5 px-6">
-                        <span className="font-bold text-gray-700">{row.entitledDays}</span>
+                        <span className="font-bold text-gray-700">{row.entitledDays} days</span>
+                        {row.bonusDays > 0 && (
+                          <p className="text-[10px] text-emerald-600 font-semibold">
+                            +{row.bonusDays} tenure bonus
+                          </p>
+                        )}
                       </td>
                       <td className="py-3.5 px-6">
                         <span className="font-bold text-amber-700">{row.usedDays}</span>

@@ -20,16 +20,18 @@ import {
   ChevronRight,
   Info,
   X,
+  Calendar,
+  BadgeCheck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const VALID_CATEGORIES = ['Shift', 'Straight Day']
 const VALID_COMPANIES = ['CBI', 'Abanach']
-const TEMPLATE_HEADERS = ['full_name', 'staff_id', 'position', 'category', 'department', 'company']
+const TEMPLATE_HEADERS = ['full_name', 'staff_id', 'position', 'category', 'department', 'company', 'date_of_engagement', 'native_status']
 const TEMPLATE_SAMPLE = [
-  { full_name: 'Jane Doe', staff_id: 'CBI-010', position: 'Plant Operator', category: 'Shift', department: 'Operations', company: 'CBI' },
-  { full_name: 'Kweku Asante', staff_id: 'CBI-011', position: 'Technician', category: 'Straight Day', department: 'Maintenance', company: 'Abanach' },
+  { full_name: 'Jane Doe', staff_id: 'CBI-010', position: 'Plant Operator', category: 'Shift', department: 'Operations', company: 'CBI', date_of_engagement: '2022-03-15', native_status: 'Native' },
+  { full_name: 'Kweku Asante', staff_id: 'CBI-011', position: 'Technician', category: 'Straight Day', department: 'Maintenance', company: 'Abanach', date_of_engagement: '2020-01-10', native_status: 'Non-Native' },
 ]
 
 // ─── Helper: validate a single parsed row ─────────────────────────────────
@@ -68,6 +70,10 @@ function validateRow(row, index, existingStaffIds, seenInBatch, departments = []
     errors.push(`Company must be "CBI" or "Abanach" (got "${company || 'empty'}")`)
   }
 
+  const rawDoe = row.date_of_engagement ? String(row.date_of_engagement).trim() : ''
+  const rawNative = String(row.native_status || 'Native').trim()
+  const nativeStatus = rawNative.toLowerCase() === 'non-native' ? 'Non-Native' : 'Native'
+
   return {
     _rowIndex: index + 1,
     full_name: fullName,
@@ -76,6 +82,8 @@ function validateRow(row, index, existingStaffIds, seenInBatch, departments = []
     category,
     department: departmentName,
     company: company || 'CBI',
+    date_of_engagement: rawDoe || null,
+    native_status: nativeStatus,
     _resolvedDepartmentId: resolvedDepartment?.id || fallbackDepartmentId,
     _errors: errors,
     _valid: errors.length === 0,
@@ -102,6 +110,8 @@ export const NewEmployeePage = () => {
   const [company, setCompany] = useState('CBI')
   const [position, setPosition] = useState('')
   const [departmentId, setDepartmentId] = useState('')
+  const [dateOfEngagement, setDateOfEngagement] = useState('')
+  const [nativeStatus, setNativeStatus] = useState('Native')
 
   // ── Bulk upload state ───────────────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false)
@@ -160,6 +170,8 @@ export const NewEmployeePage = () => {
         role: 'employee',
         department_id: departmentId,
         company: company || 'CBI',
+        date_of_engagement: dateOfEngagement || null,
+        native_status: nativeStatus || 'Native',
         is_active: true,
       })
       if (profileError) throw profileError
@@ -191,7 +203,7 @@ export const NewEmployeePage = () => {
     const ws = XLSX.utils.aoa_to_sheet(wsData)
 
     // Style column widths
-    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }]
+    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 16 }]
 
     // Add a second info sheet
     const infoData = [
@@ -204,9 +216,11 @@ export const NewEmployeePage = () => {
       ['2. Fill one employee per row starting from row 2.'],
       ['3. Category must be exactly: Shift  OR  Straight Day'],
       ['4. Company must be exactly: CBI  OR  Abanach'],
-      ['5. Department should match an existing department name exactly.'],
-      ['6. Staff IDs must be unique across the entire system.'],
-      ['7. Save as .xlsx or .csv, then upload in the app.'],
+      ['5. Date of Engagement (DOE): YYYY-MM-DD (e.g. 2022-03-15)'],
+      ['6. Native Status: Native  OR  Non-Native (default: Native)'],
+      ['7. Department should match an existing department name exactly.'],
+      ['8. Staff IDs must be unique across the entire system.'],
+      ['9. Save as .xlsx or .csv, then upload in the app.'],
     ]
     const wsInfo = XLSX.utils.aoa_to_sheet(infoData)
     wsInfo['!cols'] = [{ wch: 36 }, { wch: 28 }]
@@ -330,6 +344,8 @@ export const NewEmployeePage = () => {
         role: 'employee',
         department_id: row._resolvedDepartmentId || repDeptId,
         company: (row.company || 'CBI').toUpperCase(),
+        date_of_engagement: row.date_of_engagement || null,
+        native_status: row.native_status || 'Native',
         is_active: true,
       }))
 
@@ -503,6 +519,45 @@ export const NewEmployeePage = () => {
               </div>
             </div>
 
+            {/* Date of Engagement (DOE) & Native Status */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Calendar size={14} />
+                  <span>Date of Engagement (DOE)</span>
+                </label>
+                <input
+                  type="date"
+                  value={dateOfEngagement}
+                  onChange={(e) => setDateOfEngagement(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all font-medium"
+                  disabled={submitting}
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Used for leave entitlement (3–4 yrs: +3 days, 5+ yrs: +4 days).
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <BadgeCheck size={14} />
+                  <span>Origin / Native Status</span>
+                </label>
+                <select
+                  required
+                  value={nativeStatus}
+                  onChange={(e) => setNativeStatus(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#006939] focus:border-[#006939] transition-all cursor-pointer font-medium"
+                  disabled={submitting}
+                >
+                  <option value="Native">Native (21 base annual days)</option>
+                  <option value="Non-Native">Non-Native (24 base annual days)</option>
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Determines statutory base annual leave days.
+                </p>
+              </div>
+            </div>
+
             {/* Department */}
             <div>
               <label className="block text-xs font-bold text-[#006939] uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -599,7 +654,7 @@ export const NewEmployeePage = () => {
                   Download the Excel template, fill in your employees, then come back and upload.
                   Required columns:{' '}
                   <span className="font-semibold text-gray-700">
-                    full_name, staff_id, position, category, department, company
+                    full_name, staff_id, position, category, department, company, date_of_engagement, native_status
                   </span>
                   .
                 </p>
@@ -740,6 +795,12 @@ export const NewEmployeePage = () => {
                         Category
                       </th>
                       <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                        DOE
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                        Origin
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
                         Issue(s)
                       </th>
                     </tr>
@@ -783,6 +844,16 @@ export const NewEmployeePage = () => {
                           ) : (
                             <span className="text-gray-300 italic">—</span>
                           )}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-gray-700">
+                          {row.date_of_engagement || <span className="text-gray-300 italic">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full font-semibold text-xs ${
+                            row.native_status === 'Non-Native' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {row.native_status || 'Native'}
+                          </span>
                         </td>
                         <td className="px-3 py-2.5 text-red-600 text-xs leading-tight max-w-[220px]">
                           {row._errors.length > 0 ? (

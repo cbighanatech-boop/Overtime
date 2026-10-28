@@ -182,3 +182,8 @@ CREATE TABLE IF NOT EXISTS leave_notifications (
   sent_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE leave_notifications ENABLE ROW LEVEL SECURITY;
+
+-- 10. PROFILES ENHANCEMENT: DATE OF ENGAGEMENT & ORIGIN / NATIVE STATUS
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS date_of_engagement DATE,
+ADD COLUMN IF NOT EXISTS native_status TEXT DEFAULT 'Native' CHECK (native_status IN ('Native', 'Non-Native'));

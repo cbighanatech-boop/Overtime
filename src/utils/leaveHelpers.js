@@ -4,7 +4,7 @@ import { isAdmin, isRep, isSupervisor } from './roleHelpers'
  * Default leave types used as fallback or initial reference
  */
 export const DEFAULT_LEAVE_TYPES = [
-  { name: 'Annual Leave', default_days: 15, description: 'Standard annual statutory holiday entitlement' },
+  { name: 'Annual Leave', default_days: 21, description: 'Standard annual statutory holiday entitlement (Computed by Native status & DOE)' },
   { name: 'Sick Leave', default_days: 10, description: 'Medical or illness-related absence' },
   { name: 'Casual Leave', default_days: 5, description: 'Short-term personal urgent matters' },
   { name: 'Maternity Leave', default_days: 90, description: 'Maternity leave for female employees' },
@@ -62,6 +62,103 @@ export const isEligibleForLeave = (employee) => {
   if (!employee) return false
   const company = employee.company?.toString().trim().toLowerCase()
   return company !== 'abanach'
+}
+
+/**
+ * Calculate tenure in years from Date of Engagement (DOE) relative to a given year.
+ */
+export const getTenureYears = (employee, forYear = new Date().getFullYear()) => {
+  const doe = employee?.date_of_engagement || employee?.doe
+  if (!doe) return 0
+  const doeDate = new Date(doe)
+  if (isNaN(doeDate.getTime())) return 0
+  const doeYear = doeDate.getFullYear()
+  return Math.max(0, forYear - doeYear)
+}
+
+/**
+ * Compute Annual Leave Entitlement according to CBI policy:
+ * 1. Base entitlement:
+ *    - Native: 21 days
+ *    - Non-Native: 24 days
+ * 2. DOE Tenure Bonus:
+ *    - In the year where the employee is 3 or 4 years: +3 days
+ *    - On the 5th anniversary year and onwards (>= 5 years): +4 days
+ *    - Applicable to both Native and Non-Native employees
+ * 
+ * @param {Object} employee - Employee profile (has native_status and date_of_engagement)
+ * @param {number} forYear - Calculation calendar year (defaults to current year)
+ * @returns {number} Entitled annual leave days
+ */
+export const calculateAnnualLeaveEntitlement = (employee, forYear = new Date().getFullYear()) => {
+  if (!employee) return 21
+
+  // Check Native vs Non-Native
+  const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
+  const baseDays = isNonNative ? 24 : 21
+
+  // Check Date of Engagement (DOE)
+  const tenureYears = getTenureYears(employee, forYear)
+
+  let bonusDays = 0
+  if (tenureYears === 3 || tenureYears === 4) {
+    bonusDays = 3
+  } else if (tenureYears >= 5) {
+    bonusDays = 4
+  }
+
+  return baseDays + bonusDays
+}
+
+/**
+ * Get entitlement breakdown explanation for tooltip / display
+ */
+export const getEntitlementBreakdown = (employee, leaveType, forYear = new Date().getFullYear()) => {
+  if (!leaveType) return { entitled: 0, text: '' }
+
+  const typeName = (leaveType.name || '').trim().toLowerCase()
+  if (typeName === 'annual leave') {
+    const isNonNative = employee?.native_status?.toString().trim().toLowerCase() === 'non-native'
+    const baseDays = isNonNative ? 24 : 21
+    const tenureYears = getTenureYears(employee, forYear)
+    const total = calculateAnnualLeaveEntitlement(employee, forYear)
+    const bonusDays = total - baseDays
+
+    let note = `${baseDays} days base (${isNonNative ? 'Non-Native' : 'Native'})`
+    if (bonusDays > 0) {
+      note += ` + ${bonusDays} days tenure bonus (${tenureYears} yrs of service)`
+    } else if (employee?.date_of_engagement) {
+      note += ` (${tenureYears} yrs service)`
+    }
+
+    return {
+      entitled: total,
+      baseDays,
+      bonusDays,
+      tenureYears,
+      isNonNative,
+      text: note
+    }
+  }
+
+  return {
+    entitled: Number(leaveType.default_days || 0),
+    baseDays: Number(leaveType.default_days || 0),
+    bonusDays: 0,
+    text: `${leaveType.default_days || 0} days statutory`
+  }
+}
+
+/**
+ * Get entitlement for any leave type, automatically applying the DOE & Native formula for Annual Leave.
+ */
+export const getEmployeeLeaveEntitlement = (employee, leaveType, forYear = new Date().getFullYear()) => {
+  if (!leaveType) return 0
+  const typeName = (leaveType.name || '').trim().toLowerCase()
+  if (typeName === 'annual leave') {
+    return calculateAnnualLeaveEntitlement(employee, forYear)
+  }
+  return Number(leaveType.default_days || 0)
 }
 
 /**

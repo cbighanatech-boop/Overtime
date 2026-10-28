@@ -237,6 +237,46 @@ export const UsersPage = () => {
     }
   }
 
+  // Admin can edit Date of Engagement (DOE)
+  const handleDoeEdit = async (user) => {
+    const current = user.date_of_engagement || ''
+    const newDoe = window.prompt(`Enter Date of Engagement (YYYY-MM-DD) for ${user.full_name}:`, current)
+    if (newDoe === null) return
+    const cleaned = newDoe.trim() || null
+    if (cleaned && !/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+      toast.error('Invalid date format. Please use YYYY-MM-DD (e.g. 2022-03-15).')
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ date_of_engagement: cleaned })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(`${user.full_name}'s DOE updated.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, date_of_engagement: cleaned } : u))
+    } catch (err) {
+      console.error('DOE update failed:', err.message)
+      toast.error(err.message || 'Failed to update Date of Engagement.')
+    }
+  }
+
+  // Admin can change Origin / Native Status
+  const handleNativeStatusChange = async (user, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ native_status: newStatus })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(`${user.full_name}'s Origin updated to ${newStatus}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, native_status: newStatus } : u))
+    } catch (err) {
+      console.error('Native status update failed:', err.message)
+      toast.error(err.message || 'Failed to update origin status.')
+    }
+  }
+
   // Admin can assign department to a user/employee
   const handleDepartmentChange = async (user, departmentId) => {
     const deptName = departments.find(d => d.id === departmentId)?.name || ''
@@ -397,6 +437,8 @@ export const UsersPage = () => {
                   <th className="px-6 py-4">Staff ID</th>
                   <th className="px-6 py-4">Position</th>
                   <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">DOE</th>
+                  <th className="px-6 py-4">Origin</th>
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Portal Role</th>
                   <th className="px-6 py-4">Department</th>
@@ -481,6 +523,44 @@ export const UsersPage = () => {
                             {user.category || 'Standard'}
                           </span>
                         )
+                      )}
+                    </td>
+
+                    {/* DOE cell */}
+                    <td className="px-6 py-4 text-xs font-mono text-gray-700 group">
+                      <div className="flex items-center gap-2">
+                        <span>{user.date_of_engagement || <span className="text-gray-400 font-sans italic">Not set</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDoeEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Date of Engagement (YYYY-MM-DD)"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Origin (Native / Non-Native) cell */}
+                    <td className="px-6 py-4">
+                      {profile?.role === 'admin' ? (
+                        <select
+                          value={user.native_status || 'Native'}
+                          onChange={e => handleNativeStatusChange(user, e.target.value)}
+                          className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939] font-medium"
+                        >
+                          <option value="Native">Native (21d)</option>
+                          <option value="Non-Native">Non-Native (24d)</option>
+                        </select>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          user.native_status === 'Non-Native'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                          {user.native_status || 'Native'}
+                        </span>
                       )}
                     </td>
 
