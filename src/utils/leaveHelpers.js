@@ -14,6 +14,50 @@ export const DEFAULT_LEAVE_TYPES = [
 ]
 
 /**
+ * Supported years for the Leave Management App (2024 through 2035)
+ */
+export const LEAVE_YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035]
+
+/**
+ * Parse and normalize date into YYYY-MM-DD string, supporting Excel serial numbers and date objects
+ */
+export const normalizeDateString = (val) => {
+  if (!val) return ''
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toISOString().slice(0, 10)
+  }
+  if (typeof val === 'number') {
+    // Excel serial number (base date 1899-12-30)
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30))
+    const jsDate = new Date(excelEpoch.getTime() + val * 86400000)
+    if (!isNaN(jsDate.getTime())) {
+      return jsDate.toISOString().slice(0, 10)
+    }
+  }
+  const str = String(val).trim()
+  if (!str) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str
+  }
+  const parts = str.split(/[\/\-\.]/)
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`
+    } else if (parts[2].length === 4) {
+      const day = parts[0].padStart(2, '0')
+      const month = parts[1].padStart(2, '0')
+      const year = parts[2]
+      return `${year}-${month}-${day}`
+    }
+  }
+  const parsed = new Date(str)
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10)
+  }
+  return str
+}
+
+/**
  * Check if the user is authorized to place leave requests on behalf of employees.
  * Reps and Admins can place leave requests.
  */

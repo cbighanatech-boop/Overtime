@@ -3,7 +3,12 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { isEligibleForLeave, getEntitlementBreakdown } from '../../utils/leaveHelpers'
+import { 
+  isEligibleForLeave, 
+  getEntitlementBreakdown,
+  calculateAnnualLeaveEntitlement,
+  LEAVE_YEARS
+} from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { 
   Layers, 
@@ -25,10 +30,12 @@ import {
   List,
   BadgeCheck,
   Calendar,
-  Sparkles
+  Sparkles,
+  UploadCloud
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import BatchLeaveUploadModal from '../../components/leave/BatchLeaveUploadModal'
 
 export const LeaveBalancesPage = () => {
   const { profile } = useAuth()
@@ -44,6 +51,7 @@ export const LeaveBalancesPage = () => {
   const [selectedDept, setSelectedDept] = useState('All')
   const [departments, setDepartments] = useState([])
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [showBatchModal, setShowBatchModal] = useState(false)
 
   const fetchBalancesData = async () => {
     if (!profile) return
@@ -204,9 +212,9 @@ export const LeaveBalancesPage = () => {
     const empBals = balances.filter(b => b.employeeId === staffId)
     const annualBal = empBals.find(b => b.isAnnual || (b.leaveTypeName || '').toLowerCase() === 'annual leave')
     const otherUtilized = empBals.filter(b => !b.isAnnual && (b.leaveTypeName || '').toLowerCase() !== 'annual leave')
-    const totalRemaining = empBals.reduce((sum, b) => sum + b.remainingDays, 0)
-    const totalEntitled = empBals.reduce((sum, b) => sum + b.entitledDays, 0)
-    const totalUsed = empBals.reduce((sum, b) => sum + b.usedDays, 0)
+    const totalRemaining = annualBal ? annualBal.remainingDays : 0
+    const totalEntitled = annualBal ? annualBal.entitledDays : 0
+    const totalUsed = annualBal ? annualBal.usedDays : 0
     return {
       annualBal,
       otherUtilized,
@@ -325,6 +333,18 @@ export const LeaveBalancesPage = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Admin Batch Upload Button */}
+          {isAdmin(profile) && (
+            <button
+              onClick={() => setShowBatchModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-sm transition-all active:scale-[0.98]"
+              title="Batch upload employee current leave days, DOE, and native status"
+            >
+              <UploadCloud size={16} className="text-[#FDB913]" />
+              <span>Batch Upload</span>
+            </button>
+          )}
+
           {/* Admin Excel Export Button */}
           {isAdmin(profile) && (
             <button
@@ -347,7 +367,7 @@ export const LeaveBalancesPage = () => {
             onChange={(e) => setSelectedYear(Number(e.target.value))}
             className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#006939]"
           >
-            {[2025, 2026, 2027, 2028].map(yr => (
+            {LEAVE_YEARS.map(yr => (
               <option key={yr} value={yr}>Year {yr}</option>
             ))}
           </select>
@@ -692,6 +712,17 @@ export const LeaveBalancesPage = () => {
             </div>
           )}
         </div>
+      )}
+      {/* Admin Batch Leave Upload Modal */}
+      {isAdmin(profile) && (
+        <BatchLeaveUploadModal
+          isOpen={showBatchModal}
+          onClose={() => setShowBatchModal(false)}
+          selectedYear={selectedYear}
+          employees={employees}
+          leaveTypes={leaveTypes}
+          onSuccess={fetchBalancesData}
+        />
       )}
     </div>
   )

@@ -7,7 +7,8 @@ import {
   getEntitlementBreakdown, 
   getTenureYears, 
   isEligibleForLeave,
-  calculateAnnualLeaveEntitlement 
+  calculateAnnualLeaveEntitlement,
+  LEAVE_YEARS
 } from '../../utils/leaveHelpers'
 import {
   ArrowLeft,
@@ -198,16 +199,19 @@ export const EmployeeLeaveBalancesPage = () => {
     fetchEmployeeData()
   }, [employeeId, selectedYear])
 
-  // Total summary aggregates
-  const totalEntitled = balancesList.reduce((sum, b) => sum + b.entitledDays, 0)
-  const totalUsed = balancesList.reduce((sum, b) => sum + b.usedDays, 0)
-  const totalPending = balancesList.reduce((sum, b) => sum + b.pendingDays, 0)
-  const totalRemaining = balancesList.reduce((sum, b) => sum + b.remainingDays, 0)
-
   // Annual leave specific balance
   const annualLeaveBalance = balancesList.find((b) => b.isAnnual)
   const tenureYears = employee ? getTenureYears(employee, selectedYear) : 0
   const isAbanach = employee?.company?.toString().trim().toUpperCase() === 'ABANACH'
+
+  // Total summary aggregates
+  // RULE: The employee's actual entitled leave is strictly Annual Leave
+  // (base 21 or 24 days + tenure anniversary bonus days).
+  // Special statutory categories (e.g. 90 days maternity) are conditional benefits, NOT general entitlement days.
+  const totalEntitled = annualLeaveBalance ? annualLeaveBalance.entitledDays : 0
+  const totalUsed = annualLeaveBalance ? annualLeaveBalance.usedDays : 0
+  const totalPending = annualLeaveBalance ? annualLeaveBalance.pendingDays : 0
+  const totalRemaining = annualLeaveBalance ? annualLeaveBalance.remainingDays : 0
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -267,22 +271,18 @@ export const EmployeeLeaveBalancesPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Year selector */}
-          <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-            {[2025, 2026, 2027, 2028].map((yr) => (
-              <button
-                key={yr}
-                onClick={() => handleYearChange(yr)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  selectedYear === yr
-                    ? 'bg-[#006939] text-white shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {yr}
-              </button>
+          {/* Year selector (2024 - 2035) */}
+          <select
+            value={selectedYear}
+            onChange={(e) => handleYearChange(Number(e.target.value))}
+            className="px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#006939] cursor-pointer"
+          >
+            {LEAVE_YEARS.map((yr) => (
+              <option key={yr} value={yr}>
+                Year {yr}
+              </option>
             ))}
-          </div>
+          </select>
 
           <button
             onClick={fetchEmployeeData}
@@ -485,7 +485,9 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-gray-900 mt-1">
                 {totalEntitled} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
-              <p className="text-[11px] text-gray-500 mt-1">Across all leave categories</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Annual Leave {annualLeaveBalance?.bonusDays > 0 ? `(incl. +${annualLeaveBalance.bonusDays} anniversary)` : '(statutory)'}
+              </p>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -495,7 +497,7 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-amber-700 mt-1">
                 {totalUsed} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
-              <p className="text-[11px] text-gray-500 mt-1">Officially granted time off</p>
+              <p className="text-[11px] text-gray-500 mt-1">Annual leave utilized</p>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -505,7 +507,7 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-blue-700 mt-1">
                 {totalPending} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
-              <p className="text-[11px] text-gray-500 mt-1">Awaiting supervisor approval</p>
+              <p className="text-[11px] text-gray-500 mt-1">Awaiting approval</p>
             </div>
 
             <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-2xl p-5 shadow-sm">
