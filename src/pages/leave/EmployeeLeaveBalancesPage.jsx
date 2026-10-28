@@ -202,6 +202,7 @@ export const EmployeeLeaveBalancesPage = () => {
   // Annual leave specific balance
   const annualLeaveBalance = balancesList.find((b) => b.isAnnual)
   const tenureYears = employee ? getTenureYears(employee, selectedYear) : 0
+  const isEligible = employee ? isEligibleForLeave(employee) : false
   const isAbanach = employee?.company?.toString().trim().toUpperCase() === 'ABANACH'
 
   // Total summary aggregates
@@ -292,7 +293,7 @@ export const EmployeeLeaveBalancesPage = () => {
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
 
-          {(isAdmin(profile) || isRep(profile)) && employee && !isAbanach && (
+          {(isAdmin(profile) || isRep(profile)) && employee && isEligible && (
             <Link
               to={`/leave/requests/new?employeeId=${employee.id}`}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-[0.98]"
@@ -326,12 +327,12 @@ export const EmployeeLeaveBalancesPage = () => {
         </div>
       ) : (
         <>
-          {/* Abanach Warning if applicable */}
-          {isAbanach && (
+          {/* Eligibility Notice if employee ID is not CBI/XXX */}
+          {!isEligible && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-xs text-amber-800">
               <AlertCircle size={20} className="text-amber-600 shrink-0" />
               <div>
-                <strong>Notice:</strong> This employee belongs to company <strong>Abanach</strong>. Employees under Abanach are excluded from the CBI Leave App policies and leave allocations.
+                <strong>Notice:</strong> Only employees with a registered CBI staff ID (e.g. CBI/XXX) are allocated leave days and displayed in this leave app. {isAbanach ? 'Employees under Abanach are strictly excluded.' : 'This employee ID does not qualify for CBI leave days.'}
               </div>
             </div>
           )}

@@ -162,8 +162,12 @@ export const BatchLeaveUploadModal = ({
           )
         }
 
-        if (!matchedEmp) {
+        if (staffIdRaw && !/^CBI[/\\_ -]?[A-Z0-9]+/i.test(staffIdRaw)) {
+          errors.push(`Staff ID "${staffIdRaw}" is invalid. Only IDs starting with CBI (e.g. CBI/XXX) are allowed.`)
+        } else if (!matchedEmp) {
           errors.push(`Staff ID or Name "${staffIdRaw || fullNameRaw}" not found in CBI employees`)
+        } else if (!isEligibleForLeave(matchedEmp)) {
+          errors.push(`Employee "${matchedEmp.full_name}" is ineligible (ID must be e.g. CBI/XXX)`)
         } else if (matchedEmp.company?.toString().trim().toUpperCase() === 'ABANACH') {
           errors.push(`Employee "${matchedEmp.full_name}" belongs to Abanach (excluded)`)
         }
@@ -650,3 +654,4 @@ export const BatchLeaveUploadModal = ({
 }
 
 export default BatchLeaveUploadModal
+

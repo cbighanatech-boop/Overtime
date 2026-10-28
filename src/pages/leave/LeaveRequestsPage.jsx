@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canApplyLeave, canReviewLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown } from '../../utils/leaveHelpers'
+import { canApplyLeave, canReviewLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown, isEligibleForLeave } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { 
   PlusCircle, 
@@ -252,6 +252,10 @@ export const LeaveRequestsPage = () => {
 
   // Filter requests
   const filteredRequests = requests.filter(req => {
+    // RULE 1: Only employees with a registered CBI staff ID (e.g. CBI/XXX) are displayed in this leave app
+    const emp = empMap.get(req.employee_id) || empMap.get(req.employee_name)
+    const eligible = emp ? isEligibleForLeave(emp) : isEligibleForLeave({ staff_id: req.employee_id })
+    if (!eligible) return false
     // Search
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
@@ -301,9 +305,9 @@ export const LeaveRequestsPage = () => {
         'Emergency Phone': req.contact_phone || 'N/A',
         'Handover Notes': req.handover_notes || '',
         'Captured By': req.captured_by_profile?.full_name || '',
-        'Captured Date': req.captured_at ? format(parseISO(req.captured_at), 'yyyy-MM-dd HH:mm') : '',
-        'Reviewed By': req.reviewed_by_profile?.full_name || '',
-        'Reviewed Date': req.reviewed_at ? format(parseISO(req.reviewed_at), 'yyyy-MM-dd HH:mm') : '',
+        'Captured Date & Time': req.captured_at ? format(parseISO(req.captured_at), 'yyyy-MM-dd HH:mm:ss') : '',
+        'Approved / Reviewed By': req.reviewed_by_profile?.full_name || '',
+        'Approved / Reviewed Date & Time': req.reviewed_at ? format(parseISO(req.reviewed_at), 'yyyy-MM-dd HH:mm:ss') : '',
         'Supervisor Comments': req.review_comment || ''
       }))
 
@@ -612,17 +616,42 @@ export const LeaveRequestsPage = () => {
                         )}
                       </td>
 
-                      {/* Status */}
+                      {/* Status & Approval Details */}
                       <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusBadge.bg} ${statusBadge.text} ${statusBadge.border}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
-                          <span>{req.status}</span>
-                        </span>
-                        {req.review_comment && (
-                          <p className="text-[10px] text-gray-500 mt-1 max-w-[140px] truncate" title={req.review_comment}>
-                            Note: {req.review_comment}
-                          </p>
-                        )}
+                        <div className="space-y-1">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${statusBadge.bg} ${statusBadge.text} ${statusBadge.border}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
+                            <span>{req.status}</span>
+                          </span>
+
+                          {req.status === 'Approved' && req.reviewed_at && (
+                            <div className="text-[11px] text-gray-500 leading-tight pt-0.5">
+                              <span className="font-semibold text-emerald-800 block">
+                                Approved by {req.reviewed_by_profile?.full_name || 'Supervisor'}
+                              </span>
+                              <span className="text-gray-400 font-mono text-[10px]">
+                                {format(parseISO(req.reviewed_at), 'dd MMM yyyy, h:mm a')}
+                              </span>
+                            </div>
+                          )}
+
+                          {req.status === 'Declined' && req.reviewed_at && (
+                            <div className="text-[11px] text-gray-500 leading-tight pt-0.5">
+                              <span className="font-semibold text-rose-800 block">
+                                Declined by {req.reviewed_by_profile?.full_name || 'Supervisor'}
+                              </span>
+                              <span className="text-gray-400 font-mono text-[10px]">
+                                {format(parseISO(req.reviewed_at), 'dd MMM yyyy, h:mm a')}
+                              </span>
+                            </div>
+                          )}
+
+                          {req.review_comment && (
+                            <p className="text-[10px] text-gray-500 mt-1 max-w-[150px] truncate" title={req.review_comment}>
+                              Note: {req.review_comment}
+                            </p>
+                          )}
+                        </div>
                       </td>
 
                       {/* Captured By */}

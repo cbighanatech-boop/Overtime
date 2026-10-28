@@ -118,13 +118,20 @@ export const canCancelLeave = (profile, leaveRequest) => {
 }
 
 /**
- * Rule: Exclude employees whose company is "Abanach".
- * Returns true if employee is eligible for the Leave App (e.g. CBI staff).
+ * Rule: Only CBI employees with a valid CBI ID (e.g. CBI/001, CBI-001, CBI001)
+ * are eligible for leave days and displayed in the Leave App.
+ * Employees with other ID formats or whose company is "Abanach" are strictly excluded.
  */
 export const isEligibleForLeave = (employee) => {
   if (!employee) return false
   const company = employee.company?.toString().trim().toLowerCase()
-  return company !== 'abanach'
+  if (company === 'abanach') return false
+
+  // Staff ID must exist and start with CBI (e.g. CBI/001, CBI-001, CBI_001, CBI001)
+  const staffId = (employee.staff_id || employee.employee_id || '').toString().trim()
+  if (!staffId) return false
+
+  return /^CBI[/\\_ -]?[A-Z0-9]+/i.test(staffId)
 }
 
 /**

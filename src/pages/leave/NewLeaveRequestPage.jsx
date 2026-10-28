@@ -48,6 +48,7 @@ export const NewLeaveRequestPage = () => {
   const [contactPhone, setContactPhone] = useState('')
   const [reliefStaffName, setReliefStaffName] = useState('')
   const [handoverNotes, setHandoverNotes] = useState('')
+  const [submittedNotice, setSubmittedNotice] = useState(null)
 
   // Balance lookup for the selected employee & leave type
   const [balanceInfo, setBalanceInfo] = useState(null)
@@ -304,16 +305,23 @@ export const NewLeaveRequestPage = () => {
         repProfile: profile
       })
 
-      if (notifyResult?.recipients?.length > 0) {
-        toast.success(
-          `Leave application submitted! Notification sent to Supervisor: ${notifyResult.recipients[0]}`,
-          { duration: 5500 }
-        )
+      if (notifyResult?.mailtoLink) {
+        setSubmittedNotice({
+          request: createdRequest,
+          notifyResult,
+          employee: employeeObj
+        })
       } else {
-        toast.success(`Leave application for ${employeeObj.full_name} submitted successfully! Awaiting supervisor review.`)
+        if (notifyResult?.recipients?.length > 0) {
+          toast.success(
+            `Leave application submitted! Notification sent to Supervisor: ${notifyResult.recipients[0]}`,
+            { duration: 5500 }
+          )
+        } else {
+          toast.success(`Leave application for ${employeeObj.full_name} submitted successfully! Awaiting supervisor review.`)
+        }
+        navigate('/leave/requests')
       }
-
-      navigate('/leave/requests')
     } catch (err) {
       console.error('Leave submit error:', err.message)
       toast.error(err.message || 'Failed to submit leave request.')
@@ -700,6 +708,75 @@ export const NewLeaveRequestPage = () => {
 
         </form>
       </div>
+      {/* Rep to Supervisor Email Dispatch Confirmation Modal */}
+      {submittedNotice && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-5 shadow-2xl border border-gray-100">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#006939] flex items-center justify-center mx-auto border border-emerald-100 shadow-inner">
+              <CheckCircle2 size={32} />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                Leave Application Submitted!
+              </h3>
+              <p className="text-xs text-gray-500">
+                Application for <strong>{submittedNotice.employee.full_name}</strong> has been created.
+              </p>
+            </div>
+
+            {/* Email Dispatch Info Box */}
+            <div className="p-4 bg-gradient-to-br from-emerald-50 to-green-50/50 rounded-2xl border border-emerald-200 text-xs space-y-2.5">
+              <div className="flex items-center gap-2 text-[#006939] font-bold uppercase tracking-wider text-[11px]">
+                <Mail size={15} />
+                <span>Email to Supervisor from Rep User</span>
+              </div>
+
+              <div className="space-y-1 text-gray-700">
+                <p>
+                  <strong className="text-gray-900">From Rep:</strong> {profile?.full_name} {profile?.email ? `(${profile.email})` : ''}
+                </p>
+                <p>
+                  <strong className="text-gray-900">To Supervisor:</strong> {submittedNotice.notifyResult?.recipients?.[0] || 'Department Supervisor'}
+                </p>
+                <p>
+                  <strong className="text-gray-900">Period:</strong> {submittedNotice.request.start_date} to {submittedNotice.request.end_date} ({submittedNotice.request.total_days} Days)
+                </p>
+                <p>
+                  <strong className="text-gray-900">Outstanding Balance:</strong> {balanceInfo ? `${balanceInfo.remaining} days remaining` : 'Annual Leave'}
+                </p>
+              </div>
+
+              <p className="text-[11px] text-gray-500 italic pt-1 border-t border-emerald-100">
+                The supervisor will receive this notification with employee details, period, and current outstanding leave balance.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+              {submittedNotice.notifyResult?.mailtoLink && (
+                <a
+                  href={submittedNotice.notifyResult.mailtoLink}
+                  onClick={() => {
+                    toast.success('Email opened in your mail client!')
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#006939] hover:bg-[#004D2A] text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-[0.98]"
+                >
+                  <Mail size={15} className="text-[#FDB913]" />
+                  <span>Send Email from My Email App</span>
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/leave/requests')}
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors text-center"
+              >
+                Go to Leave Requests
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

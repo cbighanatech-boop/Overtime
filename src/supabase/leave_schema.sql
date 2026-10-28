@@ -176,11 +176,15 @@ CREATE TABLE IF NOT EXISTS leave_notifications (
   leave_request_id UUID REFERENCES leave_requests(id) ON DELETE CASCADE,
   recipient_email TEXT NOT NULL,
   recipient_name TEXT,
+  sender_name TEXT,
+  sender_email TEXT,
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
   status TEXT DEFAULT 'Sent',
   sent_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE leave_notifications ADD COLUMN IF NOT EXISTS sender_name TEXT;
+ALTER TABLE leave_notifications ADD COLUMN IF NOT EXISTS sender_email TEXT;
 ALTER TABLE leave_notifications ENABLE ROW LEVEL SECURITY;
 
 -- 10. PROFILES ENHANCEMENT: DATE OF ENGAGEMENT & ORIGIN / NATIVE STATUS

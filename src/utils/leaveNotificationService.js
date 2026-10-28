@@ -66,42 +66,54 @@ export const notifySupervisorsOfLeaveRequest = async ({
       ? `${outstandingBalance} days remaining`
       : 'Calculated upon review'
 
-    const subject = `[CBI Leave Action Required] Leave Request: ${employeeName} - ${leaveCategory} (${totalDays} Days)`
+    const repName = repProfile?.full_name || 'Department Representative'
+    const repEmail = repProfile?.email || ''
+
+    const subject = `[Leave Application] ${employeeName} (${staffId}) - ${leaveCategory} (${totalDays} Days)`
     
-    // Construct rich email body
+    // Construct email body sent from the Rep User to the Supervisor
     const emailBody = `
 Dear Supervisor,
 
-A new employee leave application has been submitted by Representative ${repProfile?.full_name || 'Department Rep'} and requires your review:
+Please be informed that I have submitted a leave application for ${employeeName} (Staff ID: ${staffId}) in the CBI Leave App, and it requires your review and approval.
 
 --------------------------------------------------
-EMPLOYEE DETAILS:
+APPLICATION DETAILS:
 • Employee Name: ${employeeName}
 • Staff ID: ${staffId}
-• Department: ${departmentName || 'General Operations'}
-
-LEAVE DETAILS:
+• Department: ${departmentName || 'Department'}
 • Leave Category: ${leaveCategory}
 • Leave Period: ${startFormatted} to ${endFormatted} (${totalDays} Working Days)
 • Current Outstanding Leave Balance: ${balanceDays}
-• Reason: "${leaveRequest.reason || 'Not specified'}"
+• Reason / Purpose: "${leaveRequest.reason || 'None specified'}"
 • Relief / Cover Staff: ${leaveRequest.relief_staff_name || 'None specified'}
-• Contact Phone: ${leaveRequest.contact_phone || 'None specified'}
+• Emergency Phone: ${leaveRequest.contact_phone || 'None specified'}
 --------------------------------------------------
 
 Please log in to the CBI Portal to approve or decline this application:
 ${window.location.origin}/leave/requests/${leaveRequest.id}
 
-Thank you,
-CBI Enterprise Portal System
+Warm regards,
+${repName}
+${repEmail ? `Email: ${repEmail}` : ''}
+Representative, ${departmentName || 'CBI Ghana'}
 `.trim()
 
-    // 2. Attempt Edge Function invocation (Supabase serverless mailer)
+    // 2. Generate direct mailto link so Rep can send from their own Outlook / mail client
+    const recipientEmails = recipients.map(s => s.email).filter(Boolean).join(',')
+    const mailtoLink = recipientEmails
+      ? `mailto:${encodeURIComponent(recipientEmails)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`
+      : null
+
+    // 3. Attempt Edge Function invocation (serverless mailer with reply-to as Rep User)
     let emailDispatched = false
     try {
       const { error: fnError } = await supabase.functions.invoke('send-leave-notification', {
         body: {
           recipients: recipients.map(s => ({ name: s.full_name, email: s.email })),
+          senderName: repName,
+          senderEmail: repEmail,
+          replyTo: repEmail,
           subject,
           text: emailBody,
           leaveRequestId: leaveRequest.id,
@@ -119,17 +131,18 @@ CBI Enterprise Portal System
         emailDispatched = true
       }
     } catch (invokeErr) {
-      // Edge function might not be deployed yet; we continue gracefully with audit logging
       console.warn('Edge Function send-leave-notification not reachable:', invokeErr.message)
     }
 
-    // 3. Save in-app notification / audit record in database
+    // 4. Save in-app notification / audit record in database
     for (const sup of recipients) {
       try {
         await supabase.from('leave_notifications').insert({
           leave_request_id: leaveRequest.id,
           recipient_email: sup.email,
           recipient_name: sup.full_name,
+          sender_name: repName,
+          sender_email: repEmail,
           subject,
           body: emailBody,
           status: emailDispatched ? 'Sent' : 'Queued'
@@ -142,6 +155,10 @@ CBI Enterprise Portal System
     return {
       success: true,
       recipients: recipients.map(s => `${s.full_name} (${s.email})`),
+      recipientEmails,
+      mailtoLink,
+      repName,
+      repEmail,
       subject,
       emailBody,
       emailDispatched

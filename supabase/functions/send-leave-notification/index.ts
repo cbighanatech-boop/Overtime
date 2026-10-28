@@ -21,6 +21,9 @@ serve(async (req) => {
     const payload = await req.json()
     const { 
       recipients, 
+      senderName,
+      senderEmail,
+      replyTo,
       subject, 
       text, 
       employeeName, 
@@ -47,7 +50,8 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: `CBI Portal <${SMTP_FROM}>`,
+            from: senderName ? `${senderName} via CBI Portal <${SMTP_FROM}>` : `CBI Portal <${SMTP_FROM}>`,
+            reply_to: replyTo || senderEmail || undefined,
             to: [r.email],
             subject: subject,
             text: text,
@@ -58,7 +62,9 @@ serve(async (req) => {
                   <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Action Required: Department Supervisor Review</p>
                 </div>
                 <div style="padding: 20px; background-color: #FFFFFF;">
-                  <p style="color: #374151; font-size: 14px;">A new employee leave request has been submitted and is awaiting your review:</p>
+                  <p style="color: #374151; font-size: 14px;">
+                    A new employee leave request has been submitted by Representative <strong>${senderName || 'Department Rep'}</strong> ${senderEmail ? `(${senderEmail})` : ''} and is awaiting your review:
+                  </p>
                   
                   <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">
                     <tr style="border-bottom: 1px solid #F3F4F6;">
