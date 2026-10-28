@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
+import { isEligibleForLeave } from '../../utils/leaveHelpers'
+import * as XLSX from 'xlsx'
 import { 
   Layers, 
   Search, 
@@ -13,13 +15,17 @@ import {
   RefreshCw, 
   CheckCircle2, 
   AlertCircle,
-  TrendingDown
+  TrendingDown,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { format } from 'date-fns'
 
 export const LeaveBalancesPage = () => {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [employees, setEmployees] = useState([])
   const [leaveTypes, setLeaveTypes] = useState([])
   const [balances, setBalances] = useState([])
@@ -50,7 +56,7 @@ export const LeaveBalancesPage = () => {
         .order('name')
       setDepartments(deptData || [])
 
-      // 3. Fetch active employees
+      // 3. Fetch active employees - EXCLUDING Abanach
       let empQuery = supabase
         .from('profiles')
         .select(`
@@ -58,9 +64,11 @@ export const LeaveBalancesPage = () => {
           full_name,
           staff_id,
           department_id,
+          company,
           departments (name)
         `)
         .eq('is_active', true)
+        .neq('company', 'Abanach') // Exclude Abanach company staff
         .order('full_name')
 
       if (!isAdmin(profile) && profile.department_id) {
@@ -69,7 +77,9 @@ export const LeaveBalancesPage = () => {
 
       const { data: empData, error: empError } = await empQuery
       if (empError) throw empError
-      const emps = empData || []
+      
+      // Filter out Abanach
+      const emps = (empData || []).filter(isEligibleForLeave)
       setEmployees(emps)
 
       // 4. Fetch all approved leave requests for the selected year
@@ -121,6 +131,7 @@ export const LeaveBalancesPage = () => {
             employeeName: emp.full_name,
             departmentName: emp.departments?.name || 'Department',
             departmentId: emp.department_id,
+            company: emp.company || 'CBI',
             leaveTypeId: lt.id,
             leaveTypeName: lt.name,
             entitledDays: entitled,
@@ -159,20 +170,106 @@ export const LeaveBalancesPage = () => {
     return true
   })
 
+  // Admin Export Balances to Excel
+  const handleExportBalances = () => {
+    if (!isAdmin(profile)) {
+      toast.error('Only Administrators are authorized to export balance reports.')
+      return
+    }
+
+    if (!filteredBalances.length) {
+      toast.error('No balance records found to export.')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const exportRows = filteredBalances.map(row => {
+        const pct = row.entitledDays > 0 ? Math.round((row.usedDays / row.entitledDays) * 100) : 0
+        return {
+          'Year': selectedYear,
+          'Staff ID': row.employeeId,
+          'Employee Name': row.employeeName,
+          'Department': row.departmentName,
+          'Company': row.company,
+          'Leave Category': row.leaveTypeName,
+          'Entitled Days': row.entitledDays,
+          'Used Days': row.usedDays,
+          'Remaining Days': row.remainingDays,
+          'Utilization (%)': `${pct}%`
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows)
+      worksheet['!cols'] = [
+        { wch: 10 }, // Year
+        { wch: 14 }, // Staff ID
+        { wch: 24 }, // Employee Name
+        { wch: 20 }, // Department
+        { wch: 12 }, // Company
+        { wch: 20 }, // Leave Category
+        { wch: 14 }, // Entitled Days
+        { wch: 12 }, // Used Days
+        { wch: 16 }, // Remaining Days
+        { wch: 16 }  // Utilization
+      ]
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, `Balances ${selectedYear}`)
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `CBI_Leave_Balances_${selectedYear}_${format(new Date(), 'yyyyMMdd')}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      toast.success(`Exported ${exportRows.length} balance record(s) to Excel!`)
+    } catch (err) {
+      console.error('Balance export error:', err)
+      toast.error('Failed to export leave balances to Excel.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-6 font-sans">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight uppercase">
-            Leave Balances & Entitlements
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight uppercase">
+              Leave Balances & Entitlements
+            </h1>
+            <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200 hidden sm:inline-block">
+              Excludes Abanach
+            </span>
+          </div>
           <p className="text-gray-500 text-sm mt-1">
-            Track annual statutory days, taken time off, and remaining balances per team member.
+            Track annual statutory days, taken time off, and remaining balances per CBI team member.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Admin Excel Export Button */}
+          {isAdmin(profile) && (
+            <button
+              onClick={handleExportBalances}
+              disabled={exporting || loading}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
+              title="Export employee balances to Excel (.xlsx)"
+            >
+              {exporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <FileSpreadsheet size={16} className="text-[#FDB913]" />
+              )}
+              <span>Export Balances</span>
+            </button>
+          )}
+
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -246,7 +343,7 @@ export const LeaveBalancesPage = () => {
           <div className="p-12 text-center text-gray-400">
             <Layers size={48} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm font-bold text-gray-600">No Balances Available</p>
-            <p className="text-xs text-gray-400 mt-0.5">Try adjusting filters or onboarding department staff.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Try adjusting filters or onboarding CBI department staff (Abanach staff excluded).</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -319,4 +416,3 @@ export const LeaveBalancesPage = () => {
 }
 
 export default LeaveBalancesPage
-

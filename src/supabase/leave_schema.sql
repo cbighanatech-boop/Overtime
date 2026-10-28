@@ -164,4 +164,21 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'leave_balances' AND policyname = 'Allow all authenticated on leave_balances') THEN
     CREATE POLICY "Allow all authenticated on leave_balances" ON leave_balances FOR ALL TO authenticated USING (true) WITH CHECK (true);
   END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'leave_notifications' AND policyname = 'Allow all authenticated on leave_notifications') THEN
+    CREATE POLICY "Allow all authenticated on leave_notifications" ON leave_notifications FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  END IF;
 END $$;
+
+-- 9. NOTIFICATIONS AUDIT TABLE
+CREATE TABLE IF NOT EXISTS leave_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  leave_request_id UUID REFERENCES leave_requests(id) ON DELETE CASCADE,
+  recipient_email TEXT NOT NULL,
+  recipient_name TEXT,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT DEFAULT 'Sent',
+  sent_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE leave_notifications ENABLE ROW LEVEL SECURITY;

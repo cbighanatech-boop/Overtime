@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canApplyLeave, calculateWorkingDays } from '../../utils/leaveHelpers'
+import { canApplyLeave, calculateWorkingDays, getHolidaysInRange, isEligibleForLeave } from '../../utils/leaveHelpers'
+import { notifySupervisorsOfLeaveRequest } from '../../utils/leaveNotificationService'
 import { 
   ArrowLeft, 
   CalendarDays, 
@@ -17,7 +18,9 @@ import {
   Loader2, 
   Save, 
   Info,
-  CalendarCheck
+  CalendarCheck,
+  Mail,
+  Sparkles
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, addDays } from 'date-fns'
@@ -29,6 +32,7 @@ export const NewLeaveRequestPage = () => {
   // Data sources
   const [employees, setEmployees] = useState([])
   const [leaveTypes, setLeaveTypes] = useState([])
+  const [holidays, setHolidays] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
@@ -47,13 +51,13 @@ export const NewLeaveRequestPage = () => {
   const [balanceInfo, setBalanceInfo] = useState(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
 
-  // Load active employees and leave types
+  // Load active employees (excluding Abanach), leave types, and registered holidays
   useEffect(() => {
     const fetchData = async () => {
       if (!profile) return
       setLoadingData(true)
       try {
-        // 1. Fetch active employees
+        // 1. Fetch active employees - EXCLUDING Abanach
         let empQuery = supabase
           .from('profiles')
           .select(`
@@ -65,6 +69,7 @@ export const NewLeaveRequestPage = () => {
             departments (name)
           `)
           .eq('is_active', true)
+          .neq('company', 'Abanach') // Exclude Abanach employees
           .order('full_name')
 
         // Reps can only place requests for staff in their own department
@@ -74,7 +79,10 @@ export const NewLeaveRequestPage = () => {
 
         const { data: empData, error: empError } = await empQuery
         if (empError) throw empError
-        setEmployees(empData || [])
+        
+        // Extra safeguard: filter by isEligibleForLeave
+        const eligibleEmployees = (empData || []).filter(isEligibleForLeave)
+        setEmployees(eligibleEmployees)
 
         // 2. Fetch active leave types
         const { data: ltData, error: ltError } = await supabase
@@ -91,6 +99,15 @@ export const NewLeaveRequestPage = () => {
             setSelectedLeaveTypeId(ltData[0].id)
           }
         }
+
+        // 3. Fetch registered public holidays from Overtime App
+        const { data: holData } = await supabase
+          .from('holidays')
+          .select('holiday_date, name')
+          .order('holiday_date', { ascending: true })
+
+        setHolidays(holData || [])
+
       } catch (err) {
         console.error('Failed to load form prerequisites:', err.message)
         toast.error('Could not load employees or leave types.')
@@ -102,13 +119,18 @@ export const NewLeaveRequestPage = () => {
     fetchData()
   }, [profile])
 
-  // Recalculate working days whenever dates change
+  // Recalculate working days whenever dates or holidays change
+  // Excludes weekends AND registered holidays from the Overtime App
   useEffect(() => {
     if (startDate && endDate) {
-      const days = calculateWorkingDays(startDate, endDate)
+      const holidayDates = holidays.map(h => h.holiday_date)
+      const days = calculateWorkingDays(startDate, endDate, holidayDates)
       setTotalDays(String(days))
     }
-  }, [startDate, endDate])
+  }, [startDate, endDate, holidays])
+
+  // Detect holidays falling within the selected period
+  const holidaysInRange = getHolidaysInRange(startDate, endDate, holidays)
 
   // Lookup leave balance when employee or leave type changes
   useEffect(() => {
@@ -187,6 +209,18 @@ export const NewLeaveRequestPage = () => {
       return
     }
 
+    const employeeObj = employees.find(e => e.id === selectedEmployeeId)
+    if (!employeeObj) {
+      toast.error('Selected employee details not found.')
+      return
+    }
+
+    // Explicit check: Exclude Abanach employees
+    if (!isEligibleForLeave(employeeObj)) {
+      toast.error('Employees from company "Abanach" are excluded from the Leave App.')
+      return
+    }
+
     if (!selectedLeaveTypeId) {
       toast.error('Please select a leave category.')
       return
@@ -204,7 +238,7 @@ export const NewLeaveRequestPage = () => {
 
     const daysNum = parseFloat(totalDays)
     if (isNaN(daysNum) || daysNum <= 0) {
-      toast.error('Total leave days must be greater than zero.')
+      toast.error('Total leave days must be greater than zero. (Check if dates only fall on weekends or holidays).')
       return
     }
 
@@ -213,11 +247,7 @@ export const NewLeaveRequestPage = () => {
       return
     }
 
-    const employeeObj = employees.find(e => e.id === selectedEmployeeId)
-    if (!employeeObj) {
-      toast.error('Selected employee details not found.')
-      return
-    }
+    const selectedType = leaveTypes.find(lt => lt.id === selectedLeaveTypeId)
 
     setSubmitting(true)
     try {
@@ -238,13 +268,35 @@ export const NewLeaveRequestPage = () => {
         captured_at: new Date().toISOString()
       }
 
-      const { error } = await supabase
+      const { data: insertedData, error } = await supabase
         .from('leave_requests')
         .insert(payload)
+        .select()
 
       if (error) throw error
 
-      toast.success(`Leave application for ${employeeObj.full_name} submitted successfully! Awaiting supervisor review.`)
+      const createdRequest = (insertedData && insertedData[0]) || payload
+
+      // DISPATCH EMAIL NOTIFICATION TO DEPARTMENT SUPERVISOR
+      // Sends: employee name, period, and current outstanding leave balance
+      const notifyResult = await notifySupervisorsOfLeaveRequest({
+        leaveRequest: createdRequest,
+        employee: employeeObj,
+        leaveType: selectedType,
+        departmentName: employeeObj.departments?.name,
+        outstandingBalance: balanceInfo ? balanceInfo.remaining : undefined,
+        repProfile: profile
+      })
+
+      if (notifyResult?.recipients?.length > 0) {
+        toast.success(
+          `Leave application submitted! Notification sent to Supervisor: ${notifyResult.recipients[0]}`,
+          { duration: 5500 }
+        )
+      } else {
+        toast.success(`Leave application for ${employeeObj.full_name} submitted successfully! Awaiting supervisor review.`)
+      }
+
       navigate('/leave/requests')
     } catch (err) {
       console.error('Leave submit error:', err.message)
@@ -287,7 +339,7 @@ export const NewLeaveRequestPage = () => {
                 Apply for Employee Leave
               </h1>
               <p className="text-sm text-white/80 mt-0.5">
-                Representative portal: Submit formal time off request for departmental staff.
+                Representative portal: Submit formal time off request. Supervisor will be notified via email with outstanding balance.
               </p>
             </div>
           </div>
@@ -296,13 +348,18 @@ export const NewLeaveRequestPage = () => {
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
           
-          {/* SECTION 1: EMPLOYEE SELECTION */}
+          {/* SECTION 1: EMPLOYEE SELECTION (EXCLUDES ABANACH) */}
           <div>
-            <div className="flex items-center gap-2 pb-3 mb-4 border-b border-gray-100">
-              <User size={18} className="text-[#006939]" />
-              <h2 className="text-sm font-extrabold text-[#006939] uppercase tracking-wider">
-                1. Select Colleague / Employee
-              </h2>
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <User size={18} className="text-[#006939]" />
+                <h2 className="text-sm font-extrabold text-[#006939] uppercase tracking-wider">
+                  1. Select Colleague / Employee
+                </h2>
+              </div>
+              <span className="text-[11px] font-bold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full border border-gray-200">
+                CBI Staff Only (Excludes Abanach)
+              </span>
             </div>
 
             {loadingData ? (
@@ -313,7 +370,7 @@ export const NewLeaveRequestPage = () => {
             ) : employees.length === 0 ? (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-medium flex items-center gap-2">
                 <AlertCircle size={16} className="shrink-0" />
-                <span>No active employees found in your department. Contact administrator to onboard staff.</span>
+                <span>No eligible CBI employees found in your department. (Note: Staff under "Abanach" are excluded from Leave App).</span>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -418,13 +475,18 @@ export const NewLeaveRequestPage = () => {
             </div>
           </div>
 
-          {/* SECTION 3: DATES & TOTAL DAYS */}
+          {/* SECTION 3: DATES & TOTAL DAYS (EXCLUDES HOLIDAYS & WEEKENDS) */}
           <div>
-            <div className="flex items-center gap-2 pb-3 mb-4 border-b border-gray-100">
-              <Clock size={18} className="text-[#006939]" />
-              <h2 className="text-sm font-extrabold text-[#006939] uppercase tracking-wider">
-                3. Leave Dates & Duration
-              </h2>
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Clock size={18} className="text-[#006939]" />
+                <h2 className="text-sm font-extrabold text-[#006939] uppercase tracking-wider">
+                  3. Leave Dates & Duration
+                </h2>
+              </div>
+              <span className="text-[11px] font-bold text-[#006939] bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                Official Holidays & Weekends Excluded
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -456,7 +518,7 @@ export const NewLeaveRequestPage = () => {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                  Working Days *
+                  Chargeable Leave Days *
                 </label>
                 <div className="relative">
                   <input
@@ -473,17 +535,28 @@ export const NewLeaveRequestPage = () => {
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-400 mt-1">
-                  Excludes weekends automatically.
+                  Excludes weekends and registered holidays.
                 </p>
               </div>
             </div>
+
+            {/* Notification if public holidays fall in range */}
+            {holidaysInRange.length > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2.5 text-blue-900 text-xs">
+                <Sparkles size={16} className="text-[#FDB913] shrink-0" />
+                <span>
+                  <strong>{holidaysInRange.length} Public Holiday(s) Excluded: </strong>
+                  {holidaysInRange.map(h => `${h.name || 'Holiday'} (${h.holiday_date})`).join(', ')}. These days are not deducted from the employee's leave balance!
+                </span>
+              </div>
+            )}
 
             {/* Warning if requested days exceeds available */}
             {balanceInfo && parseFloat(totalDays) > balanceInfo.remaining && (
               <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-xs">
                 <AlertCircle size={16} className="shrink-0 text-amber-600" />
                 <span>
-                  Notice: Requested duration (<strong>{totalDays} days</strong>) exceeds available balance (<strong>{balanceInfo.remaining} days</strong>). Supervisor approval may require justification.
+                  Notice: Requested duration (<strong>{totalDays} days</strong>) exceeds available balance (<strong>{balanceInfo.remaining} days</strong>). The supervisor will be informed of this outstanding balance in the email notification.
                 </span>
               </div>
             )}
@@ -560,9 +633,12 @@ export const NewLeaveRequestPage = () => {
 
           {/* Form Actions */}
           <div className="pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-gray-500 text-center sm:text-left">
-              Submission sends this request to the department supervisor for review and decision.
-            </p>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Mail size={16} className="text-[#006939] shrink-0" />
+              <span>
+                Submission automatically emails the Department Supervisor with employee details, period, and current leave balance.
+              </span>
+            </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
@@ -581,12 +657,12 @@ export const NewLeaveRequestPage = () => {
                 {submitting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    <span>Submitting Application...</span>
+                    <span>Sending Application & Email...</span>
                   </>
                 ) : (
                   <>
                     <Save size={16} />
-                    <span>Submit Leave Request</span>
+                    <span>Submit & Notify Supervisor</span>
                   </>
                 )}
               </button>
@@ -600,4 +676,3 @@ export const NewLeaveRequestPage = () => {
 }
 
 export default NewLeaveRequestPage
-

@@ -4,6 +4,7 @@ import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 import { canApplyLeave, canReviewLeave, LEAVE_STATUS_COLORS } from '../../utils/leaveHelpers'
+import * as XLSX from 'xlsx'
 import { 
   PlusCircle, 
   Search, 
@@ -22,7 +23,9 @@ import {
   Eye,
   Check,
   X,
-  MessageSquare
+  MessageSquare,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -35,6 +38,7 @@ export const LeaveRequestsPage = () => {
   const [departments, setDepartments] = useState([])
   const [leaveTypes, setLeaveTypes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
@@ -175,6 +179,84 @@ export const LeaveRequestsPage = () => {
     return true
   })
 
+  // Export to Excel handler (Admin user extraction)
+  const handleExportExcel = () => {
+    if (!isAdmin(profile)) {
+      toast.error('Only Administrators are authorized to export leave records to Excel.')
+      return
+    }
+
+    if (!filteredRequests.length) {
+      toast.error('No leave records found matching your filters to export.')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const exportRows = filteredRequests.map(req => ({
+        'Staff ID': req.employee_id || '',
+        'Employee Name': req.employee_name || '',
+        'Department': req.departments?.name || '',
+        'Leave Category': req.leave_types?.name || '',
+        'Start Date': req.start_date || '',
+        'End Date': req.end_date || '',
+        'Working Days': Number(req.total_days || 0),
+        'Status': req.status || '',
+        'Reason for Leave': req.reason || '',
+        'Relief / Cover Staff': req.relief_staff_name || 'N/A',
+        'Emergency Phone': req.contact_phone || 'N/A',
+        'Handover Notes': req.handover_notes || '',
+        'Captured By': req.captured_by_profile?.full_name || '',
+        'Captured Date': req.captured_at ? format(parseISO(req.captured_at), 'yyyy-MM-dd HH:mm') : '',
+        'Reviewed By': req.reviewed_by_profile?.full_name || '',
+        'Reviewed Date': req.reviewed_at ? format(parseISO(req.reviewed_at), 'yyyy-MM-dd HH:mm') : '',
+        'Supervisor Comments': req.review_comment || ''
+      }))
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows)
+
+      // Set readable column widths
+      worksheet['!cols'] = [
+        { wch: 14 }, // Staff ID
+        { wch: 24 }, // Employee Name
+        { wch: 20 }, // Department
+        { wch: 18 }, // Leave Category
+        { wch: 13 }, // Start Date
+        { wch: 13 }, // End Date
+        { wch: 14 }, // Working Days
+        { wch: 12 }, // Status
+        { wch: 32 }, // Reason
+        { wch: 20 }, // Relief Staff
+        { wch: 16 }, // Contact Phone
+        { wch: 28 }, // Handover Notes
+        { wch: 20 }, // Captured By
+        { wch: 18 }, // Captured Date
+        { wch: 20 }, // Reviewed By
+        { wch: 18 }, // Reviewed Date
+        { wch: 32 }  // Supervisor Comments
+      ]
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Leave Requests')
+      
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `CBI_Leave_Requests_${format(new Date(), 'yyyy-MM-dd')}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      toast.success(`Successfully exported ${exportRows.length} leave records to Excel!`)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+      toast.error('Failed to export leave data to Excel.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // Count summaries
   const pendingCount = requests.filter(r => r.status === 'Pending').length
   const approvedCount = requests.filter(r => r.status === 'Approved').length
@@ -194,6 +276,23 @@ export const LeaveRequestsPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Admin Excel Extraction Button */}
+          {isAdmin(profile) && (
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting || loading}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
+              title="Export all filtered leave records to Excel (.xlsx)"
+            >
+              {exporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <FileSpreadsheet size={16} className="text-[#FDB913]" />
+              )}
+              <span>Export to Excel</span>
+            </button>
+          )}
+
           <button
             onClick={fetchLeaveRequests}
             className="p-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 hover:text-[#006939] hover:bg-gray-50 shadow-sm transition-colors"
@@ -603,4 +702,3 @@ export const LeaveRequestsPage = () => {
 }
 
 export default LeaveRequestsPage
-

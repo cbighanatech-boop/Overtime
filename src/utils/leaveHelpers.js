@@ -55,25 +55,62 @@ export const canCancelLeave = (profile, leaveRequest) => {
 }
 
 /**
- * Calculate working days between two dates (inclusive), excluding weekends (Sat/Sun).
+ * Rule: Exclude employees whose company is "Abanach".
+ * Returns true if employee is eligible for the Leave App (e.g. CBI staff).
  */
-export const calculateWorkingDays = (startDateStr, endDateStr) => {
+export const isEligibleForLeave = (employee) => {
+  if (!employee) return false
+  const company = employee.company?.toString().trim().toLowerCase()
+  return company !== 'abanach'
+}
+
+/**
+ * Calculate working days between two dates (inclusive),
+ * EXCLUDING weekends (Saturday/Sunday) AND registered official holidays.
+ * 
+ * @param {string} startDateStr - YYYY-MM-DD
+ * @param {string} endDateStr - YYYY-MM-DD
+ * @param {Array<string>} holidayDates - Array of 'YYYY-MM-DD' holiday date strings
+ */
+export const calculateWorkingDays = (startDateStr, endDateStr, holidayDates = []) => {
   if (!startDateStr || !endDateStr) return 0
   const start = new Date(startDateStr)
   const end = new Date(endDateStr)
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0
 
+  // Normalize holiday dates to YYYY-MM-DD set for fast O(1) lookup
+  const holidaySet = new Set(
+    holidayDates.map(h => (typeof h === 'string' ? h.slice(0, 10) : h))
+  )
+
   let count = 0
   const cur = new Date(start)
   while (cur <= end) {
     const dayOfWeek = cur.getDay()
+    const curStr = cur.toISOString().split('T')[0]
+
     // 0 is Sunday, 6 is Saturday
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const isHoliday = holidaySet.has(curStr)
+
+    // Only count if it's NOT a weekend and NOT a public holiday
+    if (!isWeekend && !isHoliday) {
       count++
     }
     cur.setDate(cur.getDate() + 1)
   }
   return count
+}
+
+/**
+ * Returns any registered holidays that fall within a given date range
+ */
+export const getHolidaysInRange = (startDateStr, endDateStr, holidaysList = []) => {
+  if (!startDateStr || !endDateStr || !holidaysList?.length) return []
+  return holidaysList.filter(h => {
+    const d = typeof h === 'string' ? h : h.holiday_date
+    return d && d >= startDateStr && d <= endDateStr
+  })
 }
 
 /**
@@ -105,4 +142,3 @@ export const LEAVE_STATUS_COLORS = {
     dot: 'bg-gray-500'
   }
 }
-
