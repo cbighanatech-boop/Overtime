@@ -40,6 +40,25 @@ export const canReviewLeave = (profile, leaveRequest = null) => {
 }
 
 /**
+ * Check if the user is authorized to APPROVE a leave request.
+ * Rule: When an employee exceeds the limit of their leave entitlement,
+ * the Supervisor CANNOT approve - ONLY the Admin User can.
+ */
+export const canApproveLeave = (profile, leaveRequest, isOverLimit = false) => {
+  if (!profile || !leaveRequest) return false
+  if (isAdmin(profile)) return true
+  if (isSupervisor(profile)) {
+    // If request exceeds limit, Supervisor is blocked from approving
+    if (isOverLimit) return false
+    return (
+      leaveRequest.status === 'Pending' &&
+      leaveRequest.department_id === profile.department_id
+    )
+  }
+  return false
+}
+
+/**
  * Check if user can cancel or edit a leave request
  */
 export const canCancelLeave = (profile, leaveRequest) => {

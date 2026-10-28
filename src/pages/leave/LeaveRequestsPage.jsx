@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canApplyLeave, canReviewLeave, LEAVE_STATUS_COLORS } from '../../utils/leaveHelpers'
+import { canApplyLeave, canReviewLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { 
   PlusCircle, 
@@ -25,7 +25,9 @@ import {
   X,
   MessageSquare,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  Lock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -52,6 +54,11 @@ export const LeaveRequestsPage = () => {
   const [reviewDecision, setReviewDecision] = useState('Approved') // 'Approved' | 'Declined'
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  // Balance lookup helpers to check if leave requests exceed limit
+  const [empMap, setEmpMap] = useState(new Map())
+  const [customBals, setCustomBals] = useState([])
+  const [approvedList, setApprovedList] = useState([])
 
   const fetchLeaveRequests = async () => {
     if (!profile) return
@@ -81,14 +88,83 @@ export const LeaveRequestsPage = () => {
       const { data: deptData } = await supabase.from('departments').select('id, name').order('name')
       if (deptData) setDepartments(deptData)
 
-      const { data: ltData } = await supabase.from('leave_types').select('id, name').order('name')
+      const { data: ltData } = await supabase.from('leave_types').select('id, name, default_days').order('name')
       if (ltData) setLeaveTypes(ltData)
+
+      // Fetch employee metadata for dynamic entitlement calculation
+      const { data: emps } = await supabase
+        .from('profiles')
+        .select('id, full_name, staff_id, date_of_engagement, native_status, department_id')
+      const mapping = new Map()
+      ;(emps || []).forEach(e => {
+        mapping.set(e.id, e)
+        if (e.staff_id) mapping.set(e.staff_id, e)
+        if (e.full_name) mapping.set(e.full_name, e)
+      })
+      setEmpMap(mapping)
+
+      // Fetch custom balances
+      const { data: cBals } = await supabase.from('leave_balances').select('*')
+      if (cBals) setCustomBals(cBals)
+
+      // Fetch all approved requests for balance verification
+      const { data: appReqs } = await supabase
+        .from('leave_requests')
+        .select('id, employee_id, employee_name, leave_type_id, total_days, start_date')
+        .eq('status', 'Approved')
+      if (appReqs) setApprovedList(appReqs)
 
     } catch (err) {
       console.error('Fetch leave requests error:', err.message)
       toast.error('Failed to load leave requests.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Calculate whether an individual leave request exceeds the available balance
+  const getRequestOverLimitStatus = (req) => {
+    if (!req) return { exceedsLimit: false, availableDays: 0, entitledDays: 0, approvedDays: 0 }
+    const year = new Date(req.start_date || new Date()).getFullYear()
+    const emp = empMap.get(req.employee_id) || empMap.get(req.employee_name)
+    const lt = req.leave_types || leaveTypes.find(t => t.id === req.leave_type_id)
+
+    // Check custom balance entry
+    const custom = (customBals || []).find(
+      b => (b.employee_id === req.employee_id || b.employee_id === emp?.staff_id) &&
+           b.leave_type_id === req.leave_type_id &&
+           b.year === year
+    )
+
+    let entitled = 0
+    if (custom && custom.entitled_days !== null && custom.entitled_days !== undefined) {
+      entitled = Number(custom.entitled_days)
+    } else if (lt) {
+      const breakdown = getEntitlementBreakdown(emp, lt, year)
+      entitled = breakdown.entitled
+    }
+
+    // Approved days already taken this year, excluding this request
+    const approvedDays = (approvedList || [])
+      .filter(r => {
+        const rYear = new Date(r.start_date).getFullYear()
+        return (r.employee_id === req.employee_id || r.employee_id === emp?.staff_id) &&
+               r.leave_type_id === req.leave_type_id &&
+               rYear === year &&
+               r.id !== req.id
+      })
+      .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+
+    const availableDays = Math.max(0, entitled - approvedDays)
+    const requestedDays = Number(req.total_days || 0)
+    const exceedsLimit = requestedDays > availableDays
+
+    return {
+      entitledDays: entitled,
+      approvedDays,
+      availableDays,
+      requestedDays,
+      exceedsLimit
     }
   }
 
@@ -108,8 +184,20 @@ export const LeaveRequestsPage = () => {
 
   // Open Review Modal
   const handleOpenReview = (request, decision) => {
+    const limitInfo = getRequestOverLimitStatus(request)
+    
+    // Rule: When an employee exceeds the limit of leave entitlement,
+    // the Supervisor cannot approve; only Admin can.
+    if (decision === 'Approved' && limitInfo.exceedsLimit && !isAdmin(profile)) {
+      toast.error('Limit Exceeded: Only Administrators are authorized to approve over-limit leave applications.', {
+        duration: 5000
+      })
+      setReviewDecision('Declined')
+    } else {
+      setReviewDecision(decision)
+    }
+
     setActiveRequest(request)
-    setReviewDecision(decision)
     setReviewComment('')
     setReviewModalOpen(true)
   }
@@ -119,6 +207,12 @@ export const LeaveRequestsPage = () => {
     e.preventDefault()
     if (!activeRequest || !canReviewLeave(profile, activeRequest)) {
       toast.error('You do not have permission to review this leave request.')
+      return
+    }
+
+    const limitInfo = getRequestOverLimitStatus(activeRequest)
+    if (reviewDecision === 'Approved' && limitInfo.exceedsLimit && !isAdmin(profile)) {
+      toast.error('Department Supervisors cannot approve leave requests that exceed the entitlement limit. Only Administrators can approve.')
       return
     }
 
@@ -464,6 +558,8 @@ export const LeaveRequestsPage = () => {
                 {filteredRequests.map((req) => {
                   const statusBadge = LEAVE_STATUS_COLORS[req.status] || LEAVE_STATUS_COLORS.Pending
                   const supervisorCanReview = canReviewLeave(profile, req)
+                  const limitInfo = getRequestOverLimitStatus(req)
+                  const canApproveThis = isAdmin(profile) || (!limitInfo.exceedsLimit && supervisorCanReview)
 
                   return (
                     <tr key={req.id} className="hover:bg-gray-50/60 transition-colors">
@@ -503,6 +599,17 @@ export const LeaveRequestsPage = () => {
                         <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-[#006939] font-extrabold text-xs border border-emerald-100">
                           {req.total_days} {Number(req.total_days) === 1 ? 'day' : 'days'}
                         </span>
+                        {req.status === 'Pending' && limitInfo.exceedsLimit && (
+                          <div className="mt-1">
+                            <span 
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200"
+                              title={`Requested: ${req.total_days}d, Available: ${limitInfo.availableDays}d (Exceeds by ${req.total_days - limitInfo.availableDays}d)`}
+                            >
+                              <AlertTriangle size={10} />
+                              Exceeds Limit
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -531,16 +638,26 @@ export const LeaveRequestsPage = () => {
                       {/* Actions */}
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Quick Supervisor Decisions if pending */}
+                          {/* Quick Decisions if pending */}
                           {supervisorCanReview && req.status === 'Pending' && (
                             <>
-                              <button
-                                onClick={() => handleOpenReview(req, 'Approved')}
-                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                                title="Approve Request"
-                              >
-                                <Check size={16} />
-                              </button>
+                              {canApproveThis ? (
+                                <button
+                                  onClick={() => handleOpenReview(req, 'Approved')}
+                                  className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                  title={limitInfo.exceedsLimit ? "Approve Request (Administrator Override)" : "Approve Request"}
+                                >
+                                  <Check size={16} />
+                                </button>
+                              ) : (
+                                <button
+                                  disabled
+                                  className="p-1.5 rounded-lg bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed shadow-none"
+                                  title="Over entitlement limit: Supervisor approval disabled. Only Administrators can approve."
+                                >
+                                  <Lock size={15} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleOpenReview(req, 'Declined')}
                                 className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white transition-all shadow-sm"
@@ -597,7 +714,13 @@ export const LeaveRequestsPage = () => {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitReview} className="p-6 space-y-4">
+            {(() => {
+              const activeLimit = activeRequest ? getRequestOverLimitStatus(activeRequest) : null
+              const isOver = activeLimit?.exceedsLimit
+              const supervisorCannotApprove = isOver && !isAdmin(profile)
+
+              return (
+                <form onSubmit={handleSubmitReview} className="p-6 space-y-4">
               {/* Employee Summary Card */}
               <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1">
                 <div className="flex justify-between">
@@ -619,6 +742,29 @@ export const LeaveRequestsPage = () => {
                 </div>
               </div>
 
+              {/* Over-Limit Alert Banner */}
+              {isOver && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-900 font-extrabold uppercase tracking-wide">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                    <span>Entitlement Limit Exceeded</span>
+                  </div>
+                  <p className="text-gray-700 leading-relaxed text-[11px]">
+                    This application requires <strong>{activeRequest.total_days} days</strong>, but only <strong>{activeLimit.availableDays} days</strong> remain available (Entitled: {activeLimit.entitledDays}, Taken: {activeLimit.approvedDays}).
+                  </p>
+                  {supervisorCannotApprove ? (
+                    <div className="pt-1 text-rose-700 font-bold text-[11px] flex items-center gap-1">
+                      <Lock size={12} className="shrink-0" />
+                      <span>Department Supervisors cannot approve over-limit leave requests. Approval is restricted to Administrators.</span>
+                    </div>
+                  ) : (
+                    <p className="pt-1 text-emerald-800 font-bold text-[11px]">
+                      ✓ Administrator Authorization Active: You have permission to approve over-limit applications.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Review Decision Toggle */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
@@ -627,15 +773,19 @@ export const LeaveRequestsPage = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
+                    disabled={supervisorCannotApprove}
                     onClick={() => setReviewDecision('Approved')}
                     className={`py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all ${
-                      reviewDecision === 'Approved'
+                      supervisorCannotApprove
+                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed shadow-none'
+                        : reviewDecision === 'Approved'
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
                         : 'bg-white text-gray-700 border-gray-200 hover:bg-emerald-50'
                     }`}
+                    title={supervisorCannotApprove ? 'Supervisors cannot approve over-limit applications. Admin approval required.' : ''}
                   >
-                    <Check size={16} />
-                    <span>Approve Request</span>
+                    {supervisorCannotApprove ? <Lock size={14} /> : <Check size={16} />}
+                    <span>{supervisorCannotApprove ? 'Approve (Admin Only)' : 'Approve Request'}</span>
                   </button>
 
                   <button
@@ -694,6 +844,8 @@ export const LeaveRequestsPage = () => {
                 </button>
               </div>
             </form>
+              )
+            })()}
           </div>
         </div>
       )}

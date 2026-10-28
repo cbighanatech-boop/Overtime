@@ -123,6 +123,8 @@ export const LeaveBalancesPage = () => {
         const staffId = emp.staff_id || emp.full_name
 
         types.forEach(lt => {
+          const isAnnual = (lt.name || '').trim().toLowerCase() === 'annual leave'
+
           // Check custom entitled days or dynamically calculate from DOE and Native Status
           const customEntry = (customBals || []).find(
             b => b.employee_id === staffId && b.leave_type_id === lt.id
@@ -137,6 +139,12 @@ export const LeaveBalancesPage = () => {
           const used = approvedRequests
             .filter(r => r.employee_id === staffId && r.leave_type_id === lt.id)
             .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+
+          // RULE: Only Annual Leave is displayed by default.
+          // Other categories are only displayed when utilized (used > 0)
+          if (!isAnnual && used <= 0) {
+            return
+          }
 
           const remaining = Math.max(0, entitled - used)
 
@@ -154,6 +162,7 @@ export const LeaveBalancesPage = () => {
             breakdownText: breakdown.text ?? '',
             leaveTypeId: lt.id,
             leaveTypeName: lt.name,
+            isAnnual,
             entitledDays: entitled,
             usedDays: used,
             remainingDays: remaining
@@ -193,12 +202,14 @@ export const LeaveBalancesPage = () => {
   // Helper to extract employee balance summary
   const getEmployeeSummary = (staffId) => {
     const empBals = balances.filter(b => b.employeeId === staffId)
-    const annualBal = empBals.find(b => (b.leaveTypeName || '').toLowerCase() === 'annual leave')
+    const annualBal = empBals.find(b => b.isAnnual || (b.leaveTypeName || '').toLowerCase() === 'annual leave')
+    const otherUtilized = empBals.filter(b => !b.isAnnual && (b.leaveTypeName || '').toLowerCase() !== 'annual leave')
     const totalRemaining = empBals.reduce((sum, b) => sum + b.remainingDays, 0)
     const totalEntitled = empBals.reduce((sum, b) => sum + b.entitledDays, 0)
     const totalUsed = empBals.reduce((sum, b) => sum + b.usedDays, 0)
     return {
       annualBal,
+      otherUtilized,
       totalRemaining,
       totalEntitled,
       totalUsed,
@@ -528,6 +539,27 @@ export const LeaveBalancesPage = () => {
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-400">
                           Balance calculating...
+                        </div>
+                      )}
+
+                      {/* Other Categories Utilized (if any) */}
+                      {summary.otherUtilized?.length > 0 && (
+                        <div className="pt-2 border-t border-gray-100 space-y-1">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                            Other Categories Utilized:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {summary.otherUtilized.map((o) => (
+                              <span
+                                key={o.leaveTypeId}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-lg"
+                              >
+                                <span>{o.leaveTypeName}:</span>
+                                <strong>{o.usedDays} used</strong>
+                                <span className="text-amber-600">({o.remainingDays} left)</span>
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

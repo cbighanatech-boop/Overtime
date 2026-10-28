@@ -50,6 +50,7 @@ export const EmployeeLeaveBalancesPage = () => {
   const [balancesList, setBalancesList] = useState([])
   const [employeeRequests, setEmployeeRequests] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showAllStatutory, setShowAllStatutory] = useState(false)
 
   // Sync year with query param
   const handleYearChange = (year) => {
@@ -519,86 +520,179 @@ export const EmployeeLeaveBalancesPage = () => {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════════
-               3. ALL LEAVE BALANCES FOR THE YEAR (TILES & TABLE)
+               3. LEAVE BALANCES (ANNUAL LEAVE + UTILIZED CATEGORIES)
           ══════════════════════════════════════════════════════════════════ */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-black text-[#1A1A1A] uppercase tracking-tight">
-                  Leave Balances by Category ({selectedYear})
+                  Leave Entitlements &amp; Balances ({selectedYear})
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Comprehensive breakdown of statutory days, taken days, and remaining balances for each leave category.
+                  Annual Leave is the statutory entitlement. Other categories are tracked and displayed only when utilized.
                 </p>
               </div>
+
+              {balancesList.filter(b => !b.isAnnual && b.usedDays <= 0 && b.pendingDays <= 0).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllStatutory(!showAllStatutory)}
+                  className="text-xs font-bold text-[#006939] hover:underline self-start sm:self-auto"
+                >
+                  {showAllStatutory ? 'Hide Unutilized Categories' : `Show All Statutory Categories (${balancesList.length})`}
+                </button>
+              )}
             </div>
 
-            {/* Grid of category tiles */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {balancesList.map((b) => (
-                <div
-                  key={b.leaveTypeId}
-                  className={`bg-white rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md ${
-                    b.isAnnual ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-extrabold text-gray-900">{b.name}</h4>
-                        {b.isAnnual && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FDB913]/20 text-[#004D2A]">
-                            Primary
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
-                        {b.description || 'Statutory employee leave benefit'}
-                      </p>
+            {/* Annual Leave - Primary Entitlement Hero Tile */}
+            {annualLeaveBalance && (
+              <div className="bg-gradient-to-br from-emerald-50/60 to-white rounded-2xl border-2 border-[#006939]/30 p-6 shadow-md relative overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#006939] text-white">
+                        Actual Entitlement
+                      </span>
+                      <h4 className="text-lg font-black text-gray-900">
+                        {annualLeaveBalance.name}
+                      </h4>
                     </div>
-
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-50 text-[#006939] border border-emerald-100 shrink-0">
-                      {b.remainingDays} d left
-                    </span>
+                    <p className="text-xs text-gray-600">
+                      {annualLeaveBalance.breakdownText || 'Standard annual statutory leave'}
+                    </p>
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="mt-4 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-semibold">
-                      <span className="text-gray-500">
-                        {b.usedDays} used of {b.entitledDays} days
-                      </span>
-                      <span className={b.utilizationPct > 80 ? 'text-rose-600' : 'text-gray-700'}>
-                        {b.utilizationPct}%
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <span className="text-[11px] text-gray-400 font-bold uppercase block">Available Balance</span>
+                      <span className="text-3xl font-black text-[#006939]">
+                        {annualLeaveBalance.remainingDays} <span className="text-sm font-bold text-gray-400">days</span>
                       </span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          b.utilizationPct > 80
-                            ? 'bg-rose-500'
-                            : b.utilizationPct > 50
-                            ? 'bg-amber-500'
-                            : 'bg-[#006939]'
-                        }`}
-                        style={{ width: `${b.utilizationPct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Breakdown pill */}
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
-                    <span className="text-gray-400">Entitled: <strong>{b.entitledDays} days</strong></span>
-                    {b.bonusDays > 0 ? (
-                      <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
-                        +{b.bonusDays} bonus days
-                      </span>
-                    ) : (
-                      <span className="text-gray-500">Statutory standard</span>
-                    )}
                   </div>
                 </div>
-              ))}
+
+                {/* Progress bar */}
+                <div className="mt-5 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span className="text-gray-600">
+                      {annualLeaveBalance.usedDays} days used of {annualLeaveBalance.entitledDays} entitled days
+                    </span>
+                    <span className={annualLeaveBalance.utilizationPct > 80 ? 'text-rose-600 font-bold' : 'text-gray-700'}>
+                      {annualLeaveBalance.utilizationPct}% utilized
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        annualLeaveBalance.utilizationPct > 80
+                          ? 'bg-rose-500'
+                          : annualLeaveBalance.utilizationPct > 50
+                          ? 'bg-amber-500'
+                          : 'bg-[#006939]'
+                      }`}
+                      style={{ width: `${annualLeaveBalance.utilizationPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-emerald-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-3 text-gray-600">
+                    <span>Base: <strong>{annualLeaveBalance.baseDays} d</strong></span>
+                    <span>•</span>
+                    <span>Bonus: <strong className="text-emerald-700">+{annualLeaveBalance.bonusDays} d</strong></span>
+                    <span>•</span>
+                    <span>Approved: <strong>{annualLeaveBalance.usedDays} d</strong></span>
+                    {annualLeaveBalance.pendingDays > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="text-blue-700 font-bold">Pending: {annualLeaveBalance.pendingDays} d</span>
+                      </>
+                    )}
+                  </div>
+                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/60 px-2.5 py-0.5 rounded-full">
+                    {annualLeaveBalance.remainingDays} days ready for booking
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Other Categories Section: Only Displayed When Utilized (or when showAllStatutory is true) */}
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wider">
+                Special Leave Categories (Displayed When Utilized)
+              </h4>
+
+              {balancesList.filter(b => !b.isAnnual && (b.usedDays > 0 || b.pendingDays > 0 || showAllStatutory)).length === 0 ? (
+                <div className="p-5 bg-gray-50 border border-gray-200 rounded-2xl text-center space-y-1">
+                  <p className="text-xs font-bold text-gray-700">No Other Leave Categories Utilized in {selectedYear}</p>
+                  <p className="text-[11px] text-gray-500 max-w-lg mx-auto">
+                    Under company policy, Annual Leave is the only default credited entitlement. Other statutory categories (Sick, Casual, Maternity, Compassionate, etc.) will appear here automatically as soon as an application is placed.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {balancesList
+                    .filter(b => !b.isAnnual && (b.usedDays > 0 || b.pendingDays > 0 || showAllStatutory))
+                    .map((b) => (
+                      <div
+                        key={b.leaveTypeId}
+                        className={`bg-white rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md ${
+                          b.usedDays > 0 ? 'border-amber-200 bg-amber-50/20' : 'border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h5 className="text-sm font-extrabold text-gray-900">{b.name}</h5>
+                              {b.usedDays > 0 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                  Utilized
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
+                              {b.description || 'Statutory employee leave benefit'}
+                            </p>
+                          </div>
+
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-50 text-[#006939] border border-emerald-100 shrink-0">
+                            {b.remainingDays} d left
+                          </span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="mt-4 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-semibold">
+                            <span className="text-gray-500">
+                              {b.usedDays} used of {b.entitledDays} days
+                            </span>
+                            <span className={b.utilizationPct > 80 ? 'text-rose-600' : 'text-gray-700'}>
+                              {b.utilizationPct}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                b.utilizationPct > 80
+                                  ? 'bg-rose-500'
+                                  : b.utilizationPct > 50
+                                  ? 'bg-amber-500'
+                                  : 'bg-[#006939]'
+                              }`}
+                              style={{ width: `${b.utilizationPct}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                          <span className="text-gray-400">Statutory Limit: <strong>{b.entitledDays} days</strong></span>
+                          <span className="text-gray-600 font-semibold">{b.remainingDays} days balance</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -686,3 +780,4 @@ export const EmployeeLeaveBalancesPage = () => {
 }
 
 export default EmployeeLeaveBalancesPage
+

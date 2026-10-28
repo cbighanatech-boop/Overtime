@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canReviewLeave, canCancelLeave, LEAVE_STATUS_COLORS } from '../../utils/leaveHelpers'
+import { canReviewLeave, canCancelLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown } from '../../utils/leaveHelpers'
 import { 
   ArrowLeft, 
   CalendarDays, 
@@ -20,7 +20,9 @@ import {
   X, 
   Trash2,
   ShieldCheck,
-  CalendarCheck
+  CalendarCheck,
+  AlertTriangle,
+  Lock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -32,6 +34,7 @@ export const LeaveRequestDetailPage = () => {
 
   const [request, setRequest] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [balanceInfo, setBalanceInfo] = useState(null)
 
   // Review states
   const [reviewDecision, setReviewDecision] = useState('Approved')
@@ -56,6 +59,57 @@ export const LeaveRequestDetailPage = () => {
 
       if (error) throw error
       setRequest(data)
+
+      // Calculate entitlement balance & over-limit status
+      try {
+        const year = new Date(data.start_date).getFullYear()
+        const { data: empProfile } = await supabase
+          .from('profiles')
+          .select('*, departments(name)')
+          .or(`id.eq.${data.employee_id},staff_id.eq.${data.employee_id}`)
+          .maybeSingle()
+
+        const staffId = empProfile?.staff_id || data.employee_id
+        const { data: customBal } = await supabase
+          .from('leave_balances')
+          .select('*')
+          .eq('employee_id', staffId)
+          .eq('leave_type_id', data.leave_type_id)
+          .eq('year', year)
+          .maybeSingle()
+
+        let entitled = 0
+        if (customBal && customBal.entitled_days !== null && customBal.entitled_days !== undefined) {
+          entitled = Number(customBal.entitled_days)
+        } else if (data.leave_types) {
+          const breakdown = getEntitlementBreakdown(empProfile, data.leave_types, year)
+          entitled = breakdown.entitled
+        }
+
+        const { data: approvedReqs } = await supabase
+          .from('leave_requests')
+          .select('id, total_days')
+          .eq('employee_id', data.employee_id)
+          .eq('leave_type_id', data.leave_type_id)
+          .eq('status', 'Approved')
+          .neq('id', data.id)
+          .gte('start_date', `${year}-01-01`)
+          .lte('start_date', `${year}-12-31`)
+
+        const approvedDays = (approvedReqs || []).reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+        const availableDays = Math.max(0, entitled - approvedDays)
+        const exceedsLimit = Number(data.total_days || 0) > availableDays
+
+        setBalanceInfo({
+          entitledDays: entitled,
+          approvedDays,
+          availableDays,
+          exceedsLimit
+        })
+      } catch (balErr) {
+        console.warn('Could not compute balance limit:', balErr.message)
+      }
+
     } catch (err) {
       console.error('Fetch request detail error:', err.message)
       toast.error('Could not load leave request details.')
@@ -72,6 +126,11 @@ export const LeaveRequestDetailPage = () => {
   const handleReview = async (decision) => {
     if (!request || !canReviewLeave(profile, request)) {
       toast.error('You do not have permission to review this leave request.')
+      return
+    }
+
+    if (decision === 'Approved' && balanceInfo?.exceedsLimit && !isAdmin(profile)) {
+      toast.error('Supervisors cannot approve leave applications that exceed the entitlement limit. Only Administrators can approve.')
       return
     }
 
@@ -315,11 +374,37 @@ export const LeaveRequestDetailPage = () => {
               <div className="flex items-center gap-2">
                 <ShieldCheck size={20} className="text-[#006939]" />
                 <h3 className="text-sm font-black text-[#006939] uppercase tracking-wider">
-                  Supervisor Decision Panel
+                  Review &amp; Decision Panel
                 </h3>
               </div>
+
+              {/* Over-Limit Alert Banner */}
+              {balanceInfo?.exceedsLimit && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-amber-900 font-extrabold uppercase tracking-wide">
+                    <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                    <span>Entitlement Limit Exceeded</span>
+                  </div>
+                  <p className="text-gray-700 leading-relaxed">
+                    This request asks for <strong>{request.total_days} days</strong>, but only <strong>{balanceInfo.availableDays} days</strong> remain available in the employee's entitlement (Entitled: {balanceInfo.entitledDays}, Taken: {balanceInfo.approvedDays}).
+                  </p>
+                  {!isAdmin(profile) ? (
+                    <p className="text-rose-700 font-bold flex items-center gap-1 pt-1">
+                      <Lock size={13} className="shrink-0" />
+                      <span>Department Supervisors cannot approve leave requests that exceed the limit. Only System Administrators have authorization to approve this application.</span>
+                    </p>
+                  ) : (
+                    <p className="text-emerald-800 font-bold pt-1">
+                      ✓ Administrator Authorization Active: You have permission to override the limit and approve.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <p className="text-xs text-gray-600">
-                As a supervisor or administrator, you can review this application. If declining, please provide a justification for the employee and representative.
+                {balanceInfo?.exceedsLimit && !isAdmin(profile)
+                  ? 'Because this request exceeds the leave entitlement, you can decline the request with feedback or ask an Administrator to review it.'
+                  : 'As a supervisor or administrator, you can review this application. If declining, please provide a justification for the employee and representative.'}
               </p>
 
               <div>
@@ -330,21 +415,37 @@ export const LeaveRequestDetailPage = () => {
                   rows="2"
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Explain reason for approval or decline..."
+                  placeholder={
+                    balanceInfo?.exceedsLimit && !isAdmin(profile)
+                      ? 'State the reason for declining this over-limit request...'
+                      : 'Explain reason for approval or decline...'
+                  }
                   className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#006939]"
                 ></textarea>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleReview('Approved')}
-                  disabled={submittingReview}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
-                >
-                  {submittingReview ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  <span>Approve Leave</span>
-                </button>
+                {balanceInfo?.exceedsLimit && !isAdmin(profile) ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-100 text-gray-400 font-bold text-xs border border-gray-200 cursor-not-allowed shadow-none"
+                    title="Supervisors cannot approve over-limit leave applications. Administrator approval required."
+                  >
+                    <Lock size={14} />
+                    <span>Approve (Admin Only)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleReview('Approved')}
+                    disabled={submittingReview}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                  >
+                    {submittingReview ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    <span>{balanceInfo?.exceedsLimit ? 'Approve (Admin Override)' : 'Approve Leave'}</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
