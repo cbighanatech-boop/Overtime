@@ -29,6 +29,7 @@ import LeaveRequestsPage from '../pages/leave/LeaveRequestsPage'
 import NewLeaveRequestPage from '../pages/leave/NewLeaveRequestPage'
 import LeaveRequestDetailPage from '../pages/leave/LeaveRequestDetailPage'
 import LeaveBalancesPage from '../pages/leave/LeaveBalancesPage'
+import EmployeeLeaveBalancesPage from '../pages/leave/EmployeeLeaveBalancesPage'
 import LeaveCalendarPage from '../pages/leave/LeaveCalendarPage'
 import LeaveTypesPage from '../pages/leave/LeaveTypesPage'
 
@@ -245,6 +246,7 @@ export const AppRoutes = () => {
 
         {/* Leave Balances & Entitlements */}
         <Route path="/leave/balances" element={<LeaveBalancesPage />} />
+        <Route path="/leave/balances/:employeeId" element={<EmployeeLeaveBalancesPage />} />
 
         {/* Leave Calendar & Roster */}
         <Route path="/leave/calendar" element={<LeaveCalendarPage />} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
@@ -37,7 +37,9 @@ export const NewLeaveRequestPage = () => {
   const [submitting, setSubmitting] = useState(false)
 
   // Form State
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
+  const [searchParams] = useSearchParams()
+  const preselectedEmpId = searchParams.get('employeeId') || ''
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(preselectedEmpId)
   const [selectedLeaveTypeId, setSelectedLeaveTypeId] = useState('')
   const [startDate, setStartDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(addDays(new Date(), 5), 'yyyy-MM-dd'))
@@ -85,6 +87,11 @@ export const NewLeaveRequestPage = () => {
         // Extra safeguard: filter by isEligibleForLeave
         const eligibleEmployees = (empData || []).filter(isEligibleForLeave)
         setEmployees(eligibleEmployees)
+
+        if (preselectedEmpId && eligibleEmployees.some(e => e.id === preselectedEmpId || e.staff_id === preselectedEmpId)) {
+          const matched = eligibleEmployees.find(e => e.id === preselectedEmpId || e.staff_id === preselectedEmpId)
+          if (matched) setSelectedEmployeeId(matched.id)
+        }
 
         // 2. Fetch active leave types
         const { data: ltData, error: ltError } = await supabase
