@@ -31,8 +31,7 @@ import {
   Edit3,
   X,
   Check,
-  CheckSquare,
-  Square
+  MessageSquare
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -70,12 +69,12 @@ export const TeamLeavePlannerPage = () => {
   // Data
   const [departments, setDepartments] = useState([])
   const [employees, setEmployees] = useState([])
-  const [plans, setPlans] = useState({}) // { [staff_id]: { selectedMonths: [3, 8], monthAllocations: { 3: 10, 8: 11 }, notes: '' } }
+  const [plans, setPlans] = useState({}) // { [staff_id]: { selectedMonths: [3, 8], monthAllocations: { 3: 10, 8: 11 }, notes: '', totalPlannedDays: 21 } }
   const [approvedRequests, setApprovedRequests] = useState([])
 
-  // Modal for editing month allocation & notes for a specific employee
-  const [editingEmployee, setEditingEmployee] = useState(null)
-  const [editMonthDetails, setEditMonthDetails] = useState({ monthNum: null, days: '', note: '' })
+  // Modal for editing employee planning notes
+  const [editingEmployeeNotes, setEditingEmployeeNotes] = useState(null)
+  const [notesText, setNotesText] = useState('')
 
   // ── 1. Fetch Department, Employee & Plan Data ──────────────────────────────
   const fetchPlannerData = async () => {
@@ -178,78 +177,30 @@ export const TeamLeavePlannerPage = () => {
     fetchPlannerData()
   }, [profile, selectedYear])
 
-  // ── 2. Toggle Month for an Employee ────────────────────────────────────────
-  const handleToggleMonth = (emp, monthNum) => {
+  // ── 2. Update Leave Days for an Employee in a Specific Month ────────────────
+  const handleUpdateMonthDays = (emp, monthNum, rawVal) => {
     const staffId = emp.staff_id || emp.full_name
-    const currentPlan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '' }
-    const currentMonths = [...(currentPlan.selectedMonths || [])]
-    const currentAlloc = { ...(currentPlan.monthAllocations || {}) }
+    const currentPlan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '', totalPlannedDays: 0 }
+    const months = [...(currentPlan.selectedMonths || [])]
+    const alloc = { ...(currentPlan.monthAllocations || {}) }
 
-    const isSelected = currentMonths.includes(monthNum)
-    let newMonths = []
-
-    if (isSelected) {
-      // Remove month
-      newMonths = currentMonths.filter(m => m !== monthNum)
-      delete currentAlloc[monthNum]
-    } else {
-      // Add month
-      newMonths = [...currentMonths, monthNum].sort((a, b) => a - b)
-      
-      // Auto-assign default days if not specified
-      const entitled = calculateAnnualLeaveEntitlement(emp, selectedYear)
-      const daysPerMonth = Math.max(1, Math.round(entitled / Math.max(1, newMonths.length)))
-      currentAlloc[monthNum] = daysPerMonth
-    }
-
-    // Recalculate total planned days
-    const totalPlannedDays = Object.values(currentAlloc).reduce((sum, d) => sum + Number(d || 0), 0)
-
-    setPlans(prev => ({
-      ...prev,
-      [staffId]: {
-        ...currentPlan,
-        selectedMonths: newMonths,
-        monthAllocations: currentAlloc,
-        totalPlannedDays
-      }
-    }))
-    setHasUnsavedChanges(true)
-  }
-
-  // ── 3. Quick Edit Month Details Modal Handler ──────────────────────────────
-  const handleOpenEditModal = (emp, monthNum) => {
-    const staffId = emp.staff_id || emp.full_name
-    const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '' }
-    const existingDays = plan.monthAllocations?.[monthNum] || ''
-    setEditingEmployee(emp)
-    setEditMonthDetails({
-      monthNum,
-      days: existingDays !== undefined ? String(existingDays) : '',
-      note: plan.notes || ''
-    })
-  }
-
-  const handleSaveMonthDetails = () => {
-    if (!editingEmployee || !editMonthDetails.monthNum) return
-    const staffId = editingEmployee.staff_id || editingEmployee.full_name
-    const monthNum = editMonthDetails.monthNum
-    const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '' }
-    const months = [...(plan.selectedMonths || [])]
-    const alloc = { ...(plan.monthAllocations || {}) }
-
-    const daysNum = parseFloat(editMonthDetails.days)
-    if (!isNaN(daysNum) && daysNum > 0) {
-      if (!months.includes(monthNum)) {
-        months.push(monthNum)
-        months.sort((a, b) => a - b)
-      }
-      alloc[monthNum] = daysNum
-    } else {
-      // If days set to 0 or empty, unselect month
+    if (rawVal === '' || rawVal === null || rawVal === undefined) {
+      delete alloc[monthNum]
       const idx = months.indexOf(monthNum)
       if (idx !== -1) months.splice(idx, 1)
-      delete alloc[monthNum]
+    } else {
+      const num = parseFloat(rawVal)
+      if (isNaN(num) || num <= 0) {
+        delete alloc[monthNum]
+        const idx = months.indexOf(monthNum)
+        if (idx !== -1) months.splice(idx, 1)
+      } else {
+        alloc[monthNum] = num
+        if (!months.includes(monthNum)) {
+          months.push(monthNum)
+          months.sort((a, b) => a - b)
+        }
+      }
     }
 
     const totalPlannedDays = Object.values(alloc).reduce((sum, d) => sum + Number(d || 0), 0)
@@ -257,16 +208,38 @@ export const TeamLeavePlannerPage = () => {
     setPlans(prev => ({
       ...prev,
       [staffId]: {
-        ...plan,
+        ...currentPlan,
         selectedMonths: months,
         monthAllocations: alloc,
-        notes: editMonthDetails.note.trim(),
         totalPlannedDays
       }
     }))
     setHasUnsavedChanges(true)
-    setEditingEmployee(null)
-    toast.success(`Updated ${MONTHS[monthNum - 1].name} allocation for ${editingEmployee.full_name}`)
+  }
+
+  // ── 3. Edit Employee Notes Modal ───────────────────────────────────────────
+  const handleOpenNotesModal = (emp) => {
+    const staffId = emp.staff_id || emp.full_name
+    const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '' }
+    setEditingEmployeeNotes(emp)
+    setNotesText(plan.notes || '')
+  }
+
+  const handleSaveNotes = () => {
+    if (!editingEmployeeNotes) return
+    const staffId = editingEmployeeNotes.staff_id || editingEmployeeNotes.full_name
+    const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '' }
+
+    setPlans(prev => ({
+      ...prev,
+      [staffId]: {
+        ...plan,
+        notes: notesText.trim()
+      }
+    }))
+    setHasUnsavedChanges(true)
+    setEditingEmployeeNotes(null)
+    toast.success(`Notes saved for ${editingEmployeeNotes.full_name}`)
   }
 
   // ── 4. Save Plan Changes to Supabase & Local Cache ─────────────────────────
@@ -343,11 +316,10 @@ export const TeamLeavePlannerPage = () => {
           'Annual Entitled (Days)': entitled,
         }
 
-        // Add each month
+        // Add each month's days
         MONTHS.forEach(m => {
-          const isSelected = (plan.selectedMonths || []).includes(m.num)
           const days = plan.monthAllocations?.[m.num]
-          row[m.short] = isSelected ? (days ? `${days}d` : 'Yes') : '—'
+          row[m.short] = days && Number(days) > 0 ? `${days}d` : '—'
         })
 
         row['Total Planned (Days)'] = plannedDays
@@ -407,19 +379,21 @@ export const TeamLeavePlannerPage = () => {
         month: m,
         staffCount: 0,
         totalDays: 0,
-        staffNames: []
+        staffList: []
       }
     })
 
     filteredEmployees.forEach(emp => {
       const staffId = emp.staff_id || emp.full_name
       const plan = plans[staffId]
-      if (plan && plan.selectedMonths) {
-        plan.selectedMonths.forEach(mNum => {
-          if (counts[mNum]) {
+      if (plan && plan.monthAllocations) {
+        Object.entries(plan.monthAllocations).forEach(([mStr, daysVal]) => {
+          const mNum = Number(mStr)
+          const daysNum = Number(daysVal || 0)
+          if (counts[mNum] && daysNum > 0) {
             counts[mNum].staffCount += 1
-            counts[mNum].totalDays += Number(plan.monthAllocations?.[mNum] || 0)
-            counts[mNum].staffNames.push(emp.full_name)
+            counts[mNum].totalDays += daysNum
+            counts[mNum].staffList.push(`${emp.full_name} (${daysNum}d)`)
           }
         })
       }
@@ -449,7 +423,7 @@ export const TeamLeavePlannerPage = () => {
             )}
           </div>
           <p className="text-gray-500 text-xs sm:text-sm mt-1">
-            Indicate the months for which team members have decided to take their annual leave days. Track monthly team coverage and avoid staffing bottlenecks.
+            Indicate the number of leave days assigned for each month across team members. Plan coverage and avoid shift understaffing.
           </p>
         </div>
 
@@ -526,7 +500,7 @@ export const TeamLeavePlannerPage = () => {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-2">
           {MONTHS.map(m => {
-            const data = monthlyCoverage[m.num] || { staffCount: 0, totalDays: 0, staffNames: [] }
+            const data = monthlyCoverage[m.num] || { staffCount: 0, totalDays: 0, staffList: [] }
             const isHighDensity = data.staffCount >= 3
 
             return (
@@ -539,7 +513,7 @@ export const TeamLeavePlannerPage = () => {
                     ? 'bg-emerald-50/50 border-emerald-200'
                     : 'bg-gray-50/60 border-gray-200'
                 }`}
-                title={data.staffNames.length > 0 ? `Staff on leave in ${m.name}:\n• ${data.staffNames.join('\n• ')}` : `No staff planned in ${m.name}`}
+                title={data.staffList.length > 0 ? `Staff taking leave in ${m.name}:\n• ${data.staffList.join('\n• ')}` : `No staff scheduled in ${m.name}`}
               >
                 <div className="flex items-center justify-between text-[11px] font-bold text-gray-600">
                   <span>{m.short}</span>
@@ -559,7 +533,7 @@ export const TeamLeavePlannerPage = () => {
                 </div>
 
                 <div className="text-[10px] text-gray-500 font-medium truncate">
-                  {data.totalDays > 0 ? `${data.totalDays}d planned` : 'None'}
+                  {data.totalDays > 0 ? `${data.totalDays}d assigned` : 'None'}
                 </div>
               </div>
             )
@@ -598,11 +572,11 @@ export const TeamLeavePlannerPage = () => {
         <div className="flex items-center gap-3 text-xs text-gray-500 shrink-0 self-end md:self-center">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-md bg-[#006939] inline-block shadow-xs"></span>
-            <span className="font-semibold text-gray-700">Planned Month</span>
+            <span className="font-semibold text-gray-700">Days Assigned</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-md bg-gray-100 border border-gray-200 inline-block"></span>
-            <span>Available</span>
+            <span>Empty</span>
           </div>
         </div>
       </div>
@@ -628,18 +602,18 @@ export const TeamLeavePlannerPage = () => {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-gray-50/90 border-b border-gray-200 text-[10px] font-black text-gray-600 uppercase tracking-wider">
-                  <th className="py-3 px-4 min-w-[200px] sticky left-0 bg-gray-50/95 z-20 shadow-xs">
+                  <th className="py-3 px-4 min-w-[210px] sticky left-0 bg-gray-50/95 z-20 shadow-xs">
                     Employee (CBI ID)
                   </th>
-                  <th className="py-3 px-2 text-center min-w-[70px]">
+                  <th className="py-3 px-2 text-center min-w-[65px]">
                     Entitled
                   </th>
                   {MONTHS.map(m => (
-                    <th key={m.num} className="py-3 px-1 text-center min-w-[48px]">
+                    <th key={m.num} className="py-3 px-1 text-center min-w-[52px]">
                       {m.short}
                     </th>
                   ))}
-                  <th className="py-3 px-3 text-center min-w-[80px]">
+                  <th className="py-3 px-3 text-center min-w-[75px]">
                     Planned
                   </th>
                   <th className="py-3 px-3 text-center min-w-[110px]">
@@ -652,99 +626,103 @@ export const TeamLeavePlannerPage = () => {
                   const staffId = emp.staff_id || emp.full_name
                   const entitled = calculateAnnualLeaveEntitlement(emp, selectedYear)
                   const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '', totalPlannedDays: 0 }
-                  const selectedMonths = plan.selectedMonths || []
                   const plannedDays = plan.totalPlannedDays || 0
                   const remaining = entitled - plannedDays
 
-                  // Check if any approved leave exists for this employee in this year
-                  const empApprovedReqs = approvedRequests.filter(
-                    r => r.employee_id === staffId || r.employee_name === emp.full_name
-                  )
-
                   return (
-                    <tr key={emp.id} className="hover:bg-emerald-50/30 transition-colors group">
+                    <tr key={emp.id} className="hover:bg-emerald-50/20 transition-colors group">
                       
                       {/* Employee Info Tile */}
-                      <td className="py-3 px-4 sticky left-0 bg-white group-hover:bg-emerald-50/30 z-10 shadow-xs">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-[#006939]/10 text-[#006939] flex items-center justify-center font-bold text-xs shrink-0 border border-[#006939]/20">
-                            {emp.full_name?.charAt(0)?.toUpperCase() || 'E'}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-gray-900 truncate">
-                                {emp.full_name}
-                              </span>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                                emp.native_status === 'Non-Native' 
-                                  ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              }`}>
-                                {emp.native_status || 'Native'}
-                              </span>
+                      <td className="py-2.5 px-4 sticky left-0 bg-white group-hover:bg-emerald-50/20 z-10 shadow-xs">
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-[#006939]/10 text-[#006939] flex items-center justify-center font-bold text-xs shrink-0 border border-[#006939]/20">
+                              {emp.full_name?.charAt(0)?.toUpperCase() || 'E'}
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500 font-mono mt-0.5">
-                              <span>ID: {emp.staff_id}</span>
-                              {emp.departments?.name && (
-                                <>
-                                  <span>•</span>
-                                  <span className="truncate max-w-[90px]">{emp.departments.name}</span>
-                                </>
-                              )}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-gray-900 truncate">
+                                  {emp.full_name}
+                                </span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                  emp.native_status === 'Non-Native' 
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}>
+                                  {emp.native_status || 'Native'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] text-gray-500 font-mono mt-0.5">
+                                <span>ID: {emp.staff_id}</span>
+                                {emp.departments?.name && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="truncate max-w-[85px]">{emp.departments.name}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
+
+                          {/* Notes Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNotesModal(emp)}
+                            className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
+                              plan.notes
+                                ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-700 hover:bg-gray-100'
+                            }`}
+                            title={plan.notes ? `Note: "${plan.notes}" (click to edit)` : 'Add schedule note'}
+                          >
+                            <MessageSquare size={12} />
+                          </button>
                         </div>
                       </td>
 
                       {/* Entitled Days */}
-                      <td className="py-3 px-2 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg bg-gray-100 text-gray-800 font-black text-xs">
                           {entitled}d
                         </span>
                       </td>
 
-                      {/* 12 Interactive Month Cells */}
+                      {/* 12 Interactive Month Days Input Cells */}
                       {MONTHS.map(m => {
-                        const isSelected = selectedMonths.includes(m.num)
                         const days = plan.monthAllocations?.[m.num]
+                        const hasDays = days !== undefined && days !== null && days !== '' && Number(days) > 0
 
                         return (
-                          <td key={m.num} className="py-2 px-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleMonth(emp, m.num)}
-                              onContextMenu={(e) => {
-                                e.preventDefault()
-                                handleOpenEditModal(emp, m.num)
-                              }}
-                              className={`w-10 h-10 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center relative cursor-pointer mx-auto ${
-                                isSelected
-                                  ? 'bg-[#006939] text-white shadow-sm hover:bg-[#004D2A] active:scale-95'
-                                  : 'bg-gray-50 hover:bg-emerald-100/50 text-gray-400 hover:text-emerald-800 border border-gray-200/70 hover:border-emerald-300'
-                              }`}
-                              title={
-                                isSelected
-                                  ? `${m.name}: ${days || 'Planned'} days. Right-click to edit custom days/notes.`
-                                  : `Click to plan leave for ${emp.full_name} in ${m.name}`
-                              }
-                            >
-                              {isSelected ? (
-                                <>
-                                  <span className="text-[10px] font-black">{days ? `${days}d` : <Check size={12} />}</span>
-                                  <span className="text-[8px] opacity-80 uppercase">{m.short}</span>
-                                </>
-                              ) : (
-                                <span className="text-[10px] font-semibold text-gray-400">
-                                  {m.short}
+                          <td key={m.num} className="py-1.5 px-1 text-center">
+                            <div className="relative inline-flex items-center justify-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max="35"
+                                step="1"
+                                value={days !== undefined && days !== null ? days : ''}
+                                onChange={(e) => handleUpdateMonthDays(emp, m.num, e.target.value)}
+                                placeholder="—"
+                                disabled={!userCanEdit}
+                                className={`w-11 h-9 text-center rounded-xl text-xs transition-all outline-none ${
+                                  hasDays
+                                    ? 'bg-[#006939] text-white font-black shadow-sm border border-[#004D2A] focus:ring-2 focus:ring-[#FDB913] focus:bg-[#004D2A]'
+                                    : 'bg-gray-50 text-gray-500 border border-gray-200 hover:border-emerald-400 focus:bg-white focus:text-gray-900 focus:border-[#006939] focus:ring-2 focus:ring-[#006939]/20'
+                                }`}
+                                title={`${m.name}: ${hasDays ? `${days} leave days assigned` : 'Enter days'}`}
+                              />
+                              {hasDays && (
+                                <span className="absolute -top-1 -right-1 text-[8px] font-black text-white bg-amber-500 w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-xs pointer-events-none">
+                                  d
                                 </span>
                               )}
-                            </button>
+                            </div>
                           </td>
                         )
                       })}
 
-                      {/* Planned Days */}
-                      <td className="py-3 px-3 text-center">
+                      {/* Total Planned Days */}
+                      <td className="py-2.5 px-3 text-center">
                         <span className={`font-black text-xs ${
                           plannedDays > entitled
                             ? 'text-rose-600'
@@ -757,20 +735,20 @@ export const TeamLeavePlannerPage = () => {
                       </td>
 
                       {/* Allocation Status Badge */}
-                      <td className="py-3 px-3 text-center">
+                      <td className="py-2.5 px-3 text-center">
                         {plannedDays === entitled ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <CheckCircle2 size={11} />
                             <span>Fully Planned</span>
                           </span>
                         ) : plannedDays > entitled ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title={`Exceeds annual entitlement by ${plannedDays - entitled} days`}>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title={`Exceeds annual entitlement by ${plannedDays - entitled} days`}>
                             <AlertTriangle size={11} />
                             <span>+{plannedDays - entitled}d Over</span>
                           </span>
                         ) : plannedDays > 0 ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <span>{remaining}d unassigned</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span>{remaining}d left</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-200">
@@ -791,7 +769,7 @@ export const TeamLeavePlannerPage = () => {
           <div className="flex items-center gap-2">
             <Info size={14} className="text-[#006939] shrink-0" />
             <span>
-              <strong>Tip:</strong> Click any month box to toggle leave planning for that employee. Right-click or double-click to allocate specific days and notes.
+              <strong>Tip:</strong> Rep Users can type the number of days directly in each month box (use Tab to move between months). Click the note icon to add travel or coverage notes.
             </span>
           </div>
           {hasUnsavedChanges && (
@@ -802,21 +780,21 @@ export const TeamLeavePlannerPage = () => {
         </div>
       </div>
 
-      {/* ── Modal for Editing Month Details ── */}
-      {editingEmployee && editMonthDetails.monthNum && (
+      {/* ── Modal for Editing Employee Schedule Notes ── */}
+      {editingEmployeeNotes && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-200">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div>
                 <h3 className="font-black text-base text-gray-900">
-                  {editingEmployee.full_name}
+                  {editingEmployeeNotes.full_name}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Plan leave for <strong>{MONTHS[editMonthDetails.monthNum - 1].name} {selectedYear}</strong>
+                  Annual Leave Schedule Notes ({selectedYear})
                 </p>
               </div>
               <button
-                onClick={() => setEditingEmployee(null)}
+                onClick={() => setEditingEmployeeNotes(null)}
                 className="p-1.5 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200"
               >
                 <X size={16} />
@@ -826,32 +804,13 @@ export const TeamLeavePlannerPage = () => {
             <div className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-gray-700 block mb-1">
-                  Planned Days in {MONTHS[editMonthDetails.monthNum - 1].name}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="35"
-                  step="0.5"
-                  value={editMonthDetails.days}
-                  onChange={(e) => setEditMonthDetails(prev => ({ ...prev, days: e.target.value }))}
-                  placeholder="e.g. 10"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#006939]"
-                />
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Leave empty or enter 0 to remove this month from the schedule.
-                </p>
-              </div>
-
-              <div>
-                <label className="font-bold text-gray-700 block mb-1">
-                  Schedule Note / Justification (Optional)
+                  Schedule Notes / Special Arrangements
                 </label>
                 <textarea
-                  rows="2"
-                  value={editMonthDetails.note}
-                  onChange={(e) => setEditMonthDetails(prev => ({ ...prev, note: e.target.value }))}
-                  placeholder="e.g. Easter holiday travel, plant shutdown period..."
+                  rows="3"
+                  value={notesText}
+                  onChange={(e) => setNotesText(e.target.value)}
+                  placeholder="e.g. Easter holiday travel, plant shutdown period, handover to relief staff..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#006939]"
                 />
               </div>
@@ -860,17 +819,17 @@ export const TeamLeavePlannerPage = () => {
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setEditingEmployee(null)}
+                onClick={() => setEditingEmployeeNotes(null)}
                 className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleSaveMonthDetails}
+                onClick={handleSaveNotes}
                 className="px-4 py-2 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md"
               >
-                Apply Allocation
+                Save Notes
               </button>
             </div>
           </div>
