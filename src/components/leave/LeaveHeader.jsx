@@ -25,6 +25,7 @@ export const LeaveHeader = ({ setMobileOpen }) => {
     if (path === '/leave/requests/new') return 'Apply for Leave'
     if (path.startsWith('/leave/requests/')) return 'Leave Request Details'
     if (path === '/leave/calendar') return 'Leave Calendar'
+    if (path === '/leave/planner') return 'Team Annual Leave Planner'
     if (path === '/leave/balances') return 'Leave Balances & Entitlements'
     if (path === '/leave/types') return 'Leave Types & Days Configuration'
     return 'CBI Leave Management'

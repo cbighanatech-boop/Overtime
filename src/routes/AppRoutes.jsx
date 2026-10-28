@@ -31,6 +31,7 @@ import LeaveRequestDetailPage from '../pages/leave/LeaveRequestDetailPage'
 import LeaveBalancesPage from '../pages/leave/LeaveBalancesPage'
 import EmployeeLeaveBalancesPage from '../pages/leave/EmployeeLeaveBalancesPage'
 import LeaveCalendarPage from '../pages/leave/LeaveCalendarPage'
+import TeamLeavePlannerPage from '../pages/leave/TeamLeavePlannerPage'
 import LeaveTypesPage from '../pages/leave/LeaveTypesPage'
 
 // Import Layout Wrappers
@@ -250,6 +251,16 @@ export const AppRoutes = () => {
 
         {/* Leave Calendar & Roster */}
         <Route path="/leave/calendar" element={<LeaveCalendarPage />} />
+
+        {/* Team Annual Leave Planner - Visible to Rep & Supervisor (and Admin) */}
+        <Route 
+          path="/leave/planner" 
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'rep', 'supervisor']}>
+              <TeamLeavePlannerPage />
+            </ProtectedRoute>
+          } 
+        />
 
         {/* Leave Types & Days CRUD - Admin only */}
         <Route 

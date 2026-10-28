@@ -49,6 +49,12 @@ export const LeaveSidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpe
       roles: ['admin', 'rep', 'supervisor']
     },
     {
+      name: 'Leave Planner',
+      path: '/leave/planner',
+      icon: CalendarDays,
+      roles: ['admin', 'rep', 'supervisor']
+    },
+    {
       name: 'Leave Calendar',
       path: '/leave/calendar',
       icon: CalendarRange,

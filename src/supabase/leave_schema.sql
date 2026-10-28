@@ -191,3 +191,30 @@ ALTER TABLE leave_notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles 
 ADD COLUMN IF NOT EXISTS date_of_engagement DATE,
 ADD COLUMN IF NOT EXISTS native_status TEXT DEFAULT 'Native' CHECK (native_status IN ('Native', 'Non-Native'));
+
+-- 11. TEAM ANNUAL LEAVE PLANS TABLE (FOR REP & SUP USERS)
+CREATE TABLE IF NOT EXISTS leave_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id TEXT NOT NULL,
+  employee_name TEXT NOT NULL,
+  department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+  year INT NOT NULL DEFAULT EXTRACT(YEAR FROM CURRENT_DATE),
+  selected_months INT[] NOT NULL DEFAULT '{}',
+  month_allocations JSONB NOT NULL DEFAULT '{}'::jsonb,
+  total_planned_days NUMERIC(5,1) DEFAULT 0,
+  notes TEXT,
+  status TEXT DEFAULT 'Planned',
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, year)
+);
+
+ALTER TABLE leave_plans ENABLE ROW LEVEL SECURITY;
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'leave_plans' AND policyname = 'Allow all authenticated on leave_plans') THEN
+    CREATE POLICY "Allow all authenticated on leave_plans" ON leave_plans FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  END IF;
+END $$;
