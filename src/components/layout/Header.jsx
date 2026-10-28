@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useActionNotifications } from '../../context/ActionNotificationContext'
 import { isAdmin } from '../../utils/roleHelpers'
@@ -13,7 +13,9 @@ import {
   AlertTriangle, 
   Clock, 
   ChevronRight,
-  ClipboardList
+  ClipboardList,
+  Grid,
+  CalendarDays
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
@@ -51,7 +53,7 @@ export const Header = ({ setMobileOpen }) => {
     if (path === '/holidays') return 'Holiday Calendar'
     if (path === '/extra-hours') return 'Extra Hours Registry'
     if (path.startsWith('/admin-actions')) return 'Admin Action Center'
-    return 'CBI Management'
+    return 'CBI Overtime Portal'
   }
 
   const handleLogout = async () => {
@@ -94,11 +96,20 @@ export const Header = ({ setMobileOpen }) => {
 
         {/* Title / Breadcrumbs */}
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline-block text-xs uppercase tracking-widest text-white/60">
-            CBI Portal
+          <Link
+            to="/apps"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-xs font-semibold text-white/90 transition-colors"
+            title="Back to App Selector"
+          >
+            <Grid size={13} className="text-[#FDB913]" />
+            <span>App Hub</span>
+          </Link>
+          <span className="hidden sm:inline-block text-white/40">/</span>
+          <span className="hidden sm:inline-block text-xs uppercase tracking-widest text-[#FDB913] font-bold">
+            Overtime
           </span>
           <span className="hidden sm:inline-block text-white/40">/</span>
-          <h1 className="text-lg md:text-xl font-bold tracking-tight font-sans text-white">
+          <h1 className="text-lg md:text-xl font-bold tracking-tight font-sans text-white truncate">
             {getPageTitle()}
           </h1>
         </div>
@@ -107,6 +118,16 @@ export const Header = ({ setMobileOpen }) => {
       {/* User Information & Notification Bell */}
       {profile && (
         <div className="flex items-center gap-2 md:gap-4">
+          {/* Quick link to Leave App */}
+          <Link
+            to="/leave/dashboard"
+            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all border border-white/10"
+            title="Switch directly to Leave App"
+          >
+            <CalendarDays size={13} className="text-[#FDB913]" />
+            <span>Leave App</span>
+          </Link>
+
           {/* Notification Bell (Admin Only) */}
           {isAdmin(profile) && (
             <div className="relative" ref={dropdownRef}>

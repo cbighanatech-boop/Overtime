@@ -1,5 +1,5 @@
 import React from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { 
   LayoutDashboard, 
@@ -15,7 +15,9 @@ import {
   Activity, 
   Calendar, 
   Clock4,
-  ClipboardList
+  ClipboardList,
+  Grid,
+  CalendarDays
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 import { useActionNotifications } from '../../context/ActionNotificationContext'
@@ -105,9 +107,14 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
             <img src="/logo.png" alt="CBI Logo" className="h-6 w-auto object-contain" />
           </div>
           {(!collapsed || mobileOpen) && (
-            <span className="font-bold text-lg tracking-wide uppercase truncate font-sans">
-              CBI Portal
-            </span>
+            <div className="truncate">
+              <span className="font-bold text-base tracking-wide uppercase truncate font-sans block leading-tight">
+                CBI OVERTIME
+              </span>
+              <span className="text-[10px] text-[#FDB913] font-bold tracking-widest uppercase">
+                Time & Attendance
+              </span>
+            </div>
           )}
         </div>
         
@@ -122,14 +129,36 @@ export const Sidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) 
         )}
       </div>
 
+      {/* Switch App / Back to Launcher Hub */}
+      {(!collapsed || mobileOpen) && (
+        <div className="p-3 bg-black/15 border-b border-white/10 flex flex-col gap-2">
+          <Link
+            to="/apps"
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/15"
+            title="Return to App Launcher"
+          >
+            <Grid size={14} className="text-[#FDB913]" />
+            <span>App Hub / Switch App</span>
+          </Link>
+          <Link
+            to="/leave/dashboard"
+            className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-[#006939]/70 hover:bg-[#006939] text-white/90 hover:text-white text-[11px] font-semibold transition-all border border-white/10"
+            title="Open Leave App"
+          >
+            <CalendarDays size={12} className="text-[#FDB913]" />
+            <span>Go to Leave App</span>
+          </Link>
+        </div>
+      )}
+
       {/* Profile summary in Sidebar (Desktop Expanded & Mobile Only) */}
       {(!collapsed || mobileOpen) && profile && (
-        <div className="px-4 py-4 border-b border-white/10 bg-black/10">
-          <p className="text-xs uppercase text-white/50 tracking-widest font-bold">Logged In As</p>
-          <p className="text-sm font-semibold truncate mt-1 text-white">{profile.full_name}</p>
-          <div className="flex items-center gap-1.5 mt-1.5">
+        <div className="px-4 py-3 border-b border-white/10 bg-black/10">
+          <p className="text-[10px] uppercase text-white/50 tracking-widest font-bold">Logged In As</p>
+          <p className="text-xs font-semibold truncate mt-0.5 text-white">{profile.full_name}</p>
+          <div className="flex items-center gap-1.5 mt-1">
             <span className={`inline-block w-2 h-2 rounded-full bg-[#FDB913] shimmer`}></span>
-            <span className="text-xs capitalize font-medium text-white/80">
+            <span className="text-[11px] capitalize font-medium text-white/80">
               {profile.role} {profile.departments?.name ? `• ${profile.departments.name}` : ''}
             </span>
           </div>

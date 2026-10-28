@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-
-
 export const LoginPage = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,8 +14,8 @@ export const LoginPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Determine redirect path (default to /dashboard)
-  const from = location.state?.from?.pathname || '/dashboard'
+  // Determine redirect path (default to /apps launcher)
+  const from = location.state?.from?.pathname || '/apps'
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -52,10 +50,10 @@ export const LoginPage = () => {
             <img src="/logo.png" alt="CBI Ghana Ltd Logo" className="h-16 w-auto object-contain drop-shadow-md animate-bounce-subtle" />
           </div>
           <h2 className="text-[36px] font-[900] text-[#1A1A1A] tracking-tight leading-tight uppercase font-sans">
-            CBI OVERTIME
+            CBI PORTAL
           </h2>
           <p className="text-[#4B5563] text-sm mt-1.5 font-medium tracking-wide">
-            Time & Attendance Capture System
+            Overtime & Leave Management System
           </p>
         </div>
 
@@ -151,10 +149,9 @@ export const LoginPage = () => {
 
         {/* Footer info notes */}
         <div className="text-center mt-6 text-[#9CA3AF] text-xs">
-          <p>© {new Date().getFullYear()} CBI Time & Attendance. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} CBI Ghana Ltd. All rights reserved.</p>
           <p className="mt-1">For authorized personnel only. Activities are audited.</p>
         </div>
-
 
       </div>
     </div>

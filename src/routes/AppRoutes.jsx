@@ -3,7 +3,10 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ProtectedRoute } from './ProtectedRoute'
 
-// Import Pages
+// Import App Launcher
+import AppLauncherPage from '../pages/AppLauncherPage'
+
+// Import Overtime App Pages
 import LoginPage from '../pages/LoginPage'
 import DashboardPage from '../pages/DashboardPage'
 import RecordsPage from '../pages/RecordsPage'
@@ -15,16 +18,26 @@ import NewUserPage from '../pages/NewUserPage'
 import NewEmployeePage from '../pages/NewEmployeePage'
 import DepartmentsPage from '../pages/DepartmentsPage'
 import DepartmentDetailsPage from '../pages/DepartmentDetailsPage'
-import AuditTrailPage from '../pages/AuditTrailPage' // New import
+import AuditTrailPage from '../pages/AuditTrailPage'
 import HolidaysPage from '../pages/HolidaysPage'
 import ExtraHoursPage from '../pages/ExtraHoursPage'
 import AdminActionsPage from '../pages/AdminActionsPage'
 
-// Import PageWrapper
-import PageWrapper from '../components/layout/PageWrapper'
+// Import Leave App Pages
+import LeaveDashboardPage from '../pages/leave/LeaveDashboardPage'
+import LeaveRequestsPage from '../pages/leave/LeaveRequestsPage'
+import NewLeaveRequestPage from '../pages/leave/NewLeaveRequestPage'
+import LeaveRequestDetailPage from '../pages/leave/LeaveRequestDetailPage'
+import LeaveBalancesPage from '../pages/leave/LeaveBalancesPage'
+import LeaveCalendarPage from '../pages/leave/LeaveCalendarPage'
+import LeaveTypesPage from '../pages/leave/LeaveTypesPage'
 
-// Core Layout Wrapper for all protected pages
-const LayoutWrapper = () => {
+// Import Layout Wrappers
+import PageWrapper from '../components/layout/PageWrapper'
+import LeavePageWrapper from '../components/leave/LeavePageWrapper'
+
+// Overtime App Layout Wrapper
+const OvertimeLayoutWrapper = () => {
   return (
     <PageWrapper>
       <Outlet />
@@ -32,6 +45,14 @@ const LayoutWrapper = () => {
   )
 }
 
+// Leave App Layout Wrapper
+const LeaveLayoutWrapper = () => {
+  return (
+    <LeavePageWrapper>
+      <Outlet />
+    </LeavePageWrapper>
+  )
+}
 
 // Redirect if already authenticated
 const PublicRoute = ({ children }) => {
@@ -46,7 +67,7 @@ const PublicRoute = ({ children }) => {
   }
 
   if (session) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/apps" replace />
   }
 
   return children
@@ -65,8 +86,20 @@ export const AppRoutes = () => {
         } 
       />
 
-      {/* Protected Routes Wrapper */}
-      <Route element={<ProtectedRoute><LayoutWrapper /></ProtectedRoute>}>
+      {/* App Launcher / Selector (Landing hub after login) */}
+      <Route
+        path="/apps"
+        element={
+          <ProtectedRoute>
+            <AppLauncherPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* =========================================
+          MODULE 1: CBI OVERTIME APP
+          ========================================= */}
+      <Route element={<ProtectedRoute><OvertimeLayoutWrapper /></ProtectedRoute>}>
         {/* Dashboard - Accessible by all roles */}
         <Route path="/dashboard" element={<DashboardPage />} />
 
@@ -187,8 +220,48 @@ export const AppRoutes = () => {
         />
       </Route>
 
-      {/* Fallback Route */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* =========================================
+          MODULE 2: CBI LEAVE APP
+          ========================================= */}
+      <Route element={<ProtectedRoute><LeaveLayoutWrapper /></ProtectedRoute>}>
+        {/* Leave Dashboard */}
+        <Route path="/leave/dashboard" element={<LeaveDashboardPage />} />
+
+        {/* All Leave Requests */}
+        <Route path="/leave/requests" element={<LeaveRequestsPage />} />
+
+        {/* Apply for Leave - Rep & Admin only */}
+        <Route 
+          path="/leave/requests/new" 
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'rep']}>
+              <NewLeaveRequestPage />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Single Request Details & Approvals */}
+        <Route path="/leave/requests/:id" element={<LeaveRequestDetailPage />} />
+
+        {/* Leave Balances & Entitlements */}
+        <Route path="/leave/balances" element={<LeaveBalancesPage />} />
+
+        {/* Leave Calendar & Roster */}
+        <Route path="/leave/calendar" element={<LeaveCalendarPage />} />
+
+        {/* Leave Types & Days CRUD - Admin only */}
+        <Route 
+          path="/leave/types" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <LeaveTypesPage />
+            </ProtectedRoute>
+          } 
+        />
+      </Route>
+
+      {/* Fallback Route -> Redirects to App Hub */}
+      <Route path="*" element={<Navigate to="/apps" replace />} />
     </Routes>
   )
 }
