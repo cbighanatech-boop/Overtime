@@ -78,7 +78,6 @@ const LeaveAuditTrailPage = () => {
           reviewed_by,
           reviewed_at,
           review_comment,
-          created_at,
           updated_at,
           departments (name),
           leave_types (name),
