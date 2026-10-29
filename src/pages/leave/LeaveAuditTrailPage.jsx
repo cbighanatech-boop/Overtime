@@ -519,3 +519,4 @@ const LeaveAuditTrailPage = () => {
 }
 
 export default LeaveAuditTrailPage
+

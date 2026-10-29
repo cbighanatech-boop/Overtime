@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS leave_audit_logs (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Enable RLS immediately
+ALTER TABLE leave_audit_logs ENABLE ROW LEVEL SECURITY;
+
 -- Index for efficient time-based queries
 CREATE INDEX IF NOT EXISTS idx_leave_audit_logs_performed_at
   ON leave_audit_logs (performed_at DESC);
@@ -29,9 +32,6 @@ CREATE INDEX IF NOT EXISTS idx_leave_audit_logs_performed_at
 -- Index for filtering by request
 CREATE INDEX IF NOT EXISTS idx_leave_audit_logs_request_id
   ON leave_audit_logs (request_id);
-
--- RLS: Only authenticated users can insert (the app inserts on behalf of admin)
-ALTER TABLE leave_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow all authenticated users to read audit logs (UI enforces admin-only access)
 CREATE POLICY "Authenticated users can read leave audit logs"
@@ -44,3 +44,4 @@ CREATE POLICY "Authenticated users can insert leave audit logs"
   ON leave_audit_logs FOR INSERT
   TO authenticated
   WITH CHECK (true);
+
