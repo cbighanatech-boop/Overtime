@@ -33,6 +33,7 @@ import EmployeeLeaveBalancesPage from '../pages/leave/EmployeeLeaveBalancesPage'
 import LeaveCalendarPage from '../pages/leave/LeaveCalendarPage'
 import TeamLeavePlannerPage from '../pages/leave/TeamLeavePlannerPage'
 import LeaveTypesPage from '../pages/leave/LeaveTypesPage'
+import LeaveAuditTrailPage from '../pages/leave/LeaveAuditTrailPage'
 
 // Import Layout Wrappers
 import PageWrapper from '../components/layout/PageWrapper'
@@ -270,6 +271,16 @@ export const AppRoutes = () => {
               <LeaveTypesPage />
             </ProtectedRoute>
           } 
+        />
+
+        {/* Leave Audit Trail - Admin only */}
+        <Route
+          path="/leave/audit"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <LeaveAuditTrailPage />
+            </ProtectedRoute>
+          }
         />
       </Route>
 

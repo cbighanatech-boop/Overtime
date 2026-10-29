@@ -28,6 +28,7 @@ export const LeaveHeader = ({ setMobileOpen }) => {
     if (path === '/leave/planner') return 'Team Annual Leave Planner'
     if (path === '/leave/balances') return 'Leave Balances & Entitlements'
     if (path === '/leave/types') return 'Leave Types & Days Configuration'
+    if (path === '/leave/audit') return 'Leave Audit Trail'
     return 'CBI Leave Management'
   }
 

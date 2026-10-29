@@ -16,7 +16,8 @@ import {
   FileCheck,
   CheckCircle2,
   Settings,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Activity
 } from 'lucide-react'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 import { canApplyLeave } from '../../utils/leaveHelpers'
@@ -71,6 +72,12 @@ export const LeaveSidebar = ({ collapsed, setCollapsed, mobileOpen, setMobileOpe
       path: '/leave/types',
       icon: Settings,
       roles: ['admin'] // Admin-only: full CRUD on types and days
+    },
+    {
+      name: 'Audit Trail',
+      path: '/leave/audit',
+      icon: Activity,
+      roles: ['admin'] // Admin-only: view all leave actions history
     }
   ]
 

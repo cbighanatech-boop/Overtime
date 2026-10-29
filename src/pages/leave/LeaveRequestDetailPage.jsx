@@ -19,6 +19,8 @@ import {
   Check, 
   X, 
   Trash2,
+  Edit2,
+  Save,
   ShieldCheck,
   CalendarCheck,
   AlertTriangle,
@@ -41,6 +43,13 @@ export const LeaveRequestDetailPage = () => {
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+
+  // Admin edit/delete states
+  const [editMode, setEditMode] = useState(false)
+  const [editData, setEditData] = useState({})
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const fetchRequest = async () => {
     setLoading(true)
@@ -188,6 +197,147 @@ export const LeaveRequestDetailPage = () => {
     }
   }
 
+  // ========================
+  // Admin Edit/Delete Handlers
+  // ========================
+
+  const enterEditMode = () => {
+    if (!request) return
+    setEditData({
+      start_date: request.start_date,
+      end_date: request.end_date,
+      total_days: request.total_days,
+      reason: request.reason || '',
+      relief_staff_name: request.relief_staff_name || '',
+      contact_phone: request.contact_phone || '',
+      handover_notes: request.handover_notes || ''
+    })
+    setEditMode(true)
+  }
+
+  const cancelEditMode = () => {
+    setEditMode(false)
+    setEditData({})
+  }
+
+  const handleSaveEdit = async () => {
+    if (!request || !isAdmin(profile)) {
+      toast.error('Only administrators can edit approved leave requests.')
+      return
+    }
+
+    if (!editData.start_date || !editData.end_date || !editData.total_days) {
+      toast.error('Start date, end date, and total days are required.')
+      return
+    }
+
+    if (Number(editData.total_days) <= 0) {
+      toast.error('Total days must be greater than 0.')
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      // Log the edit action in the audit trail
+      try {
+        await supabase.from('leave_audit_logs').insert({
+          request_id: request.id,
+          action: 'Admin Edit (Approved Request)',
+          action_type: 'edit',
+          employee_name: request.employee_name,
+          employee_id: request.employee_id,
+          department: request.departments?.name || '',
+          leave_type: request.leave_types?.name || '',
+          total_days: request.total_days,
+          start_date: request.start_date,
+          end_date: request.end_date,
+          performed_by: profile.full_name,
+          performed_by_role: profile.role,
+          performed_at: new Date().toISOString(),
+          status: request.status,
+          details: `Admin edited approved request: dates changed from ${request.start_date}–${request.end_date} (${request.total_days}d) to ${editData.start_date}–${editData.end_date} (${editData.total_days}d)`
+        })
+      } catch (auditErr) {
+        console.warn('Could not log audit entry:', auditErr.message)
+      }
+
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          start_date: editData.start_date,
+          end_date: editData.end_date,
+          total_days: Number(editData.total_days),
+          reason: editData.reason.trim() || null,
+          relief_staff_name: editData.relief_staff_name.trim() || null,
+          contact_phone: editData.contact_phone.trim() || null,
+          handover_notes: editData.handover_notes.trim() || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', request.id)
+
+      if (error) throw error
+
+      toast.success('Leave request updated successfully.')
+      setEditMode(false)
+      setEditData({})
+      fetchRequest()
+    } catch (err) {
+      console.error('Admin edit failed:', err.message)
+      toast.error(err.message || 'Failed to save changes.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleAdminDelete = async () => {
+    if (!request || !isAdmin(profile)) {
+      toast.error('Only administrators can delete leave requests.')
+      return
+    }
+
+    setDeleting(true)
+    try {
+      // Log the deletion in audit trail before deleting
+      try {
+        await supabase.from('leave_audit_logs').insert({
+          request_id: request.id,
+          action: 'Admin Delete (Approved Request)',
+          action_type: 'delete',
+          employee_name: request.employee_name,
+          employee_id: request.employee_id,
+          department: request.departments?.name || '',
+          leave_type: request.leave_types?.name || '',
+          total_days: request.total_days,
+          start_date: request.start_date,
+          end_date: request.end_date,
+          performed_by: profile.full_name,
+          performed_by_role: profile.role,
+          performed_at: new Date().toISOString(),
+          status: request.status,
+          details: `Admin deleted ${request.status.toLowerCase()} request for ${request.employee_name}: ${request.total_days} day(s) of ${request.leave_types?.name || 'leave'} (${request.start_date} to ${request.end_date}). Reason: ${request.reason || 'N/A'}`
+        })
+      } catch (auditErr) {
+        console.warn('Could not log audit entry:', auditErr.message)
+      }
+
+      const { error } = await supabase
+        .from('leave_requests')
+        .delete()
+        .eq('id', request.id)
+
+      if (error) throw error
+
+      toast.success('Leave request deleted successfully.')
+      navigate('/leave/requests')
+    } catch (err) {
+      console.error('Admin delete failed:', err.message)
+      toast.error(err.message || 'Failed to delete leave request.')
+    } finally {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-12 text-center text-gray-500 font-sans">
@@ -202,6 +352,7 @@ export const LeaveRequestDetailPage = () => {
   const statusBadge = LEAVE_STATUS_COLORS[request.status] || LEAVE_STATUS_COLORS.Pending
   const userCanReview = canReviewLeave(profile, request)
   const userCanCancel = canCancelLeave(profile, request)
+  const adminCanEditDelete = isAdmin(profile) && request.status === 'Approved'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 font-sans">
@@ -215,11 +366,76 @@ export const LeaveRequestDetailPage = () => {
           <span>Back to All Requests</span>
         </button>
 
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${statusBadge.bg} ${statusBadge.text} ${statusBadge.border}`}>
-          <span className={`w-2 h-2 rounded-full ${statusBadge.dot}`}></span>
-          <span>{request.status}</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Admin Edit/Delete buttons for approved requests */}
+          {adminCanEditDelete && !editMode && (
+            <>
+              <button
+                onClick={enterEditMode}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition-all"
+                title="Edit this approved leave request"
+              >
+                <Edit2 size={14} />
+                <span>Edit</span>
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-bold transition-all"
+                title="Delete this approved leave request"
+              >
+                <Trash2 size={14} />
+                <span>Delete</span>
+              </button>
+            </>
+          )}
+
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${statusBadge.bg} ${statusBadge.text} ${statusBadge.border}`}>
+            <span className={`w-2 h-2 rounded-full ${statusBadge.dot}`}></span>
+            <span>{request.status}</span>
+          </span>
+        </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 max-w-md w-full mx-4 space-y-4">
+            <div className="flex items-center gap-2 text-rose-700">
+              <AlertTriangle size={24} />
+              <h3 className="text-lg font-black uppercase tracking-tight">Confirm Deletion</h3>
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              Are you sure you want to <strong>permanently delete</strong> this approved leave request for <strong>{request.employee_name}</strong>?
+            </p>
+            <div className="p-3 bg-gray-50 rounded-xl text-xs space-y-1 text-gray-600 border border-gray-100">
+              <p><strong>Leave Type:</strong> {request.leave_types?.name}</p>
+              <p><strong>Dates:</strong> {request.start_date} to {request.end_date}</p>
+              <p><strong>Duration:</strong> {request.total_days} working day(s)</p>
+            </div>
+            <p className="text-xs text-rose-600 font-semibold">
+              ⚠ This action cannot be undone. The deletion will be recorded in the audit trail.
+            </p>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={handleAdminDelete}
+                disabled={deleting}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                <span>Yes, Delete</span>
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold text-xs transition-all"
+              >
+                <X size={14} />
+                <span>Cancel</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Details Card */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-xl overflow-hidden">
@@ -252,6 +468,113 @@ export const LeaveRequestDetailPage = () => {
 
         {/* Content Grid */}
         <div className="p-6 sm:p-8 space-y-8">
+
+          {/* Admin Edit Mode Banner */}
+          {editMode && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+              <div className="flex items-center gap-2 mb-3">
+                <Edit2 size={18} className="text-amber-700" />
+                <h3 className="text-sm font-black text-amber-800 uppercase tracking-wider">
+                  Admin Edit Mode
+                </h3>
+              </div>
+              <p className="text-xs text-amber-700 mb-4">
+                Modify the fields below and click "Save Changes" to update this approved leave request. Changes are recorded in the audit trail.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={editData.start_date || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, start_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={editData.end_date || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, end_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Total Days</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editData.total_days || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, total_days: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Reason</label>
+                  <textarea
+                    rows="2"
+                    value={editData.reason || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, reason: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Relief Staff</label>
+                  <input
+                    type="text"
+                    value={editData.relief_staff_name || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, relief_staff_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Emergency Phone</label>
+                  <input
+                    type="text"
+                    value={editData.contact_phone || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, contact_phone: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Handover Notes</label>
+                  <input
+                    type="text"
+                    value={editData.handover_notes || ''}
+                    onChange={(e) => setEditData(prev => ({ ...prev, handover_notes: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2 border-t border-amber-200">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {savingEdit ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  <span>Save Changes</span>
+                </button>
+                <button
+                  onClick={cancelEditMode}
+                  disabled={savingEdit}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold text-xs transition-all"
+                >
+                  <X size={14} />
+                  <span>Cancel Edit</span>
+                </button>
+              </div>
+            </div>
+          )}
           
           {/* Key Dates & Type */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100">
@@ -482,4 +805,3 @@ export const LeaveRequestDetailPage = () => {
 }
 
 export default LeaveRequestDetailPage
-
