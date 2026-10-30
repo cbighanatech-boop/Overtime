@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabase/client'
 import { 
@@ -14,7 +14,18 @@ import {
   FolderOpen,
   Trash2,
   Edit2,
-  Clock4
+  Clock4,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Building2,
+  Save,
+  X,
+  Loader2,
+  RefreshCw,
+  ExternalLink,
+  ShieldCheck,
+  Check
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
@@ -22,15 +33,27 @@ import ExtraHoursPage from './ExtraHoursPage'
 
 export const UsersPage = () => {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState('directory') // 'directory' | 'extra-hours'
+  const [activeTab, setActiveTab] = useState('directory') // 'directory' | 'supervisors' | 'extra-hours'
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchText, setSearchText] = useState('')
+  const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'admin' | 'supervisor' | 'rep' | 'employee'
 
   const [currentUserId, setCurrentUserId] = useState(null)
-
-  // Departments list for admin assignment
   const [departments, setDepartments] = useState([])
+
+  // Email Edit Modal State
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [selectedUserForEmail, setSelectedUserForEmail] = useState(null)
+  const [emailInput, setEmailInput] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  // Supervisor Quick Assignment Modal State
+  const [assignModalOpen, setAssignModalOpen] = useState(false)
+  const [assignDept, setAssignDept] = useState(null)
+  const [assignUserId, setAssignUserId] = useState('')
+  const [assignEmail, setAssignEmail] = useState('')
+  const [savingAssignment, setSavingAssignment] = useState(false)
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -43,13 +66,14 @@ export const UsersPage = () => {
         .select(`
           *,
           departments (
+            id,
             name
           )
         `)
         .order('full_name')
 
       if (searchText.trim()) {
-        query = query.or(`full_name.ilike.%${searchText.trim()}%,email.ilike.%${searchText.trim()}%`)
+        query = query.or(`full_name.ilike.%${searchText.trim()}%,email.ilike.%${searchText.trim()}%,staff_id.ilike.%${searchText.trim()}%`)
       }
 
       const { data, error } = await query
@@ -69,16 +93,149 @@ export const UsersPage = () => {
   }, [searchText])
 
   useEffect(() => {
-    // Load departments for admin assignment
     const loadDepartments = async () => {
-      const { data, error } = await supabase.from('departments').select('id, name')
+      const { data, error } = await supabase.from('departments').select('id, name').order('name')
       if (error) console.error('Error loading departments:', error)
       else setDepartments(data || [])
     }
     loadDepartments()
   }, [])
 
-  // Admin delete handler with audit logging
+  // Filtered users for Directory view
+  const filteredUsers = useMemo(() => {
+    let list = users
+    if (roleFilter !== 'all') {
+      list = list.filter(u => (u.role || '').toLowerCase() === roleFilter)
+    }
+    return list
+  }, [users, roleFilter])
+
+  // Grouped supervisors by department
+  const departmentSupervisorMap = useMemo(() => {
+    const map = new Map()
+    departments.forEach(dept => {
+      const sups = users.filter(u => u.department_id === dept.id && u.role === 'supervisor' && u.is_active)
+      map.set(dept.id, sups)
+    })
+    return map
+  }, [departments, users])
+
+  // Active Admin users
+  const adminUsers = useMemo(() => {
+    return users.filter(u => u.role === 'admin' && u.is_active)
+  }, [users])
+
+  // Open Email Edit Modal
+  const handleOpenEmailEdit = (user) => {
+    setSelectedUserForEmail(user)
+    setEmailInput(user.email || '')
+    setEmailModalOpen(true)
+  }
+
+  // Save Updated Email in profiles table
+  const handleSaveEmail = async (e) => {
+    e.preventDefault()
+    if (!selectedUserForEmail) return
+
+    const cleaned = emailInput.trim().toLowerCase()
+    if (!cleaned || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) {
+      toast.error('Please enter a valid email address (e.g. name@cbi-africa.com)')
+      return
+    }
+
+    setSavingEmail(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ email: cleaned })
+        .eq('id', selectedUserForEmail.id)
+
+      if (error) throw error
+
+      toast.success(`Email for ${selectedUserForEmail.full_name} updated to ${cleaned}!`)
+      setUsers(prev => prev.map(u => u.id === selectedUserForEmail.id ? { ...u, email: cleaned } : u))
+      setEmailModalOpen(false)
+      setSelectedUserForEmail(null)
+    } catch (err) {
+      console.error('Email update failed:', err.message)
+      toast.error(err.message || 'Failed to update email address.')
+    } finally {
+      setSavingEmail(false)
+    }
+  }
+
+  // Open Assign Supervisor Modal for a specific Department
+  const handleOpenAssignModal = (dept) => {
+    setAssignDept(dept)
+    const existingSups = departmentSupervisorMap.get(dept.id) || []
+    if (existingSups.length > 0) {
+      setAssignUserId(existingSups[0].id)
+      setAssignEmail(existingSups[0].email || '')
+    } else {
+      setAssignUserId('')
+      setAssignEmail('')
+    }
+    setAssignModalOpen(true)
+  }
+
+  // Save Supervisor Assignment & Email
+  const handleSaveSupervisorAssignment = async (e) => {
+    e.preventDefault()
+    if (!assignDept || !assignUserId) {
+      toast.error('Please select an employee to designate as supervisor.')
+      return
+    }
+
+    const cleanedEmail = assignEmail.trim().toLowerCase()
+    if (cleanedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
+      toast.error('Please enter a valid email address for notifications.')
+      return
+    }
+
+    setSavingAssignment(true)
+    try {
+      const updatePayload = {
+        role: 'supervisor',
+        department_id: assignDept.id
+      }
+      if (cleanedEmail) {
+        updatePayload.email = cleanedEmail
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', assignUserId)
+
+      if (error) throw error
+
+      const targetEmp = users.find(u => u.id === assignUserId)
+      toast.success(`${targetEmp?.full_name || 'User'} assigned as Supervisor for ${assignDept.name}!`)
+      
+      setUsers(prev => prev.map(u => {
+        if (u.id === assignUserId) {
+          return {
+            ...u,
+            role: 'supervisor',
+            department_id: assignDept.id,
+            email: cleanedEmail || u.email,
+            departments: { id: assignDept.id, name: assignDept.name }
+          }
+        }
+        return u
+      }))
+
+      setAssignModalOpen(false)
+      setAssignDept(null)
+    } catch (err) {
+      console.error('Supervisor assignment failed:', err.message)
+      toast.error(err.message || 'Failed to assign supervisor.')
+    } finally {
+      setSavingAssignment(false)
+    }
+  }
+
+  // Admin delete handler
   const handleDelete = async (targetUser) => {
     const confirmMsg = `Are you sure you want to DELETE ${targetUser.full_name} (${targetUser.role})? This action cannot be undone.`
     if (!window.confirm(confirmMsg)) return
@@ -87,16 +244,7 @@ export const UsersPage = () => {
       const { error } = await supabase.from('profiles').delete().eq('id', targetUser.id)
       if (error) throw error
 
-      // Audit log entry
-      await supabase.from('audit_logs').insert({
-        action: 'delete_user',
-        performed_by: profile?.id,
-        performed_at: new Date().toISOString(),
-        details: { id: targetUser.id, role: targetUser.role }
-      })
-
       toast.success(`${targetUser.full_name} has been deleted.`)
-      // Remove from local state
       setUsers(prev => prev.filter(u => u.id !== targetUser.id))
     } catch (err) {
       console.error('Delete failed:', err.message)
@@ -104,7 +252,7 @@ export const UsersPage = () => {
     }
   }
 
-  // Existing toggle status handler remains unchanged
+  // Toggle active status
   const handleToggleStatus = async (user) => {
     const updatedStatus = !user.is_active
     const message = updatedStatus 
@@ -122,8 +270,6 @@ export const UsersPage = () => {
       if (error) throw error
 
       toast.success(`${user.full_name} account ${updatedStatus ? 'activated' : 'deactivated'} successfully.`)
-      
-      // Update state locally
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: updatedStatus } : u))
     } catch (err) {
       console.error("Status toggle failed:", err.message)
@@ -131,7 +277,7 @@ export const UsersPage = () => {
     }
   }
 
-  // Change user role
+  // Role change
   const handleRoleChange = async (user, newRole) => {
     if (user.role === newRole) return
     
@@ -146,9 +292,7 @@ export const UsersPage = () => {
 
       if (error) throw error
 
-      toast.success(`${user.full_name}'s role has been updated to ${newRole}.`)
-      
-      // Update state locally
+      toast.success(`${user.full_name}'s role updated to ${newRole}.`)
       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u))
     } catch (err) {
       console.error("Role update failed:", err.message)
@@ -156,156 +300,19 @@ export const UsersPage = () => {
     }
   }
 
-  // Admin can change position
-  const handlePositionEdit = async (user) => {
-    const newPosition = window.prompt(`Enter new position for ${user.full_name}:`, user.position || '')
-    if (newPosition === null || newPosition === user.position) return
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ position: newPosition })
-        .eq('id', user.id)
-
-      if (error) throw error
-
-      toast.success(`${user.full_name}'s position updated.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, position: newPosition } : u))
-    } catch (err) {
-      console.error("Position update failed:", err.message)
-      toast.error(err.message || "Failed to update position.")
-    }
-  }
-
-  // Admin can edit full name
-  const handleFullNameEdit = async (user) => {
-    const newName = window.prompt(`Enter new full name for ${user.full_name}:`, user.full_name || '')
-    if (newName === null || !newName.trim() || newName.trim() === user.full_name) return
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ full_name: newName.trim() })
-        .eq('id', user.id)
-
-      if (error) throw error
-
-      toast.success(`${user.full_name}'s name updated to ${newName.trim()}.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, full_name: newName.trim() } : u))
-    } catch (err) {
-      console.error("Full name update failed:", err.message)
-      toast.error(err.message || "Failed to update name.")
-    }
-  }
-
-  // Admin can edit Staff ID
-  const handleStaffIdEdit = async (user) => {
-    const newStaffId = window.prompt(`Enter new Staff ID for ${user.full_name}:`, user.staff_id || '')
-    if (newStaffId === null || newStaffId.trim() === user.staff_id) return
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ staff_id: newStaffId.trim() || null })
-        .eq('id', user.id)
-
-      if (error) throw error
-
-      toast.success(`${user.full_name}'s Staff ID updated to ${newStaffId.trim() || 'N/A'}.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, staff_id: newStaffId.trim() || null } : u))
-    } catch (err) {
-      console.error("Staff ID update failed:", err.message)
-      toast.error(err.message || "Failed to update Staff ID.")
-    }
-  }
-
-  // Admin can change Category
-  const handleCategoryChange = async (user, newCategory) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ category: newCategory || null })
-        .eq('id', user.id)
-
-      if (error) throw error
-
-      toast.success(`${user.full_name}'s category updated.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, category: newCategory || null } : u))
-    } catch (err) {
-      console.error("Category update failed:", err.message)
-      toast.error(err.message || "Failed to update category.")
-    }
-  }
-
-  // Admin can edit Date of Engagement (DOE)
-  const handleDoeEdit = async (user) => {
-    const current = user.date_of_engagement || ''
-    const newDoe = window.prompt(`Enter Date of Engagement (YYYY-MM-DD) for ${user.full_name}:`, current)
-    if (newDoe === null) return
-    const cleaned = newDoe.trim() || null
-    if (cleaned && !/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-      toast.error('Invalid date format. Please use YYYY-MM-DD (e.g. 2022-03-15).')
-      return
-    }
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ date_of_engagement: cleaned })
-        .eq('id', user.id)
-      if (error) throw error
-      toast.success(`${user.full_name}'s DOE updated.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, date_of_engagement: cleaned } : u))
-    } catch (err) {
-      console.error('DOE update failed:', err.message)
-      toast.error(err.message || 'Failed to update Date of Engagement.')
-    }
-  }
-
-  // Admin can change Origin / Native Status
-  const handleNativeStatusChange = async (user, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ native_status: newStatus })
-        .eq('id', user.id)
-      if (error) throw error
-      toast.success(`${user.full_name}'s Origin updated to ${newStatus}.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, native_status: newStatus } : u))
-    } catch (err) {
-      console.error('Native status update failed:', err.message)
-      toast.error(err.message || 'Failed to update origin status.')
-    }
-  }
-
-  // Admin can assign department to a user/employee
+  // Department change
   const handleDepartmentChange = async (user, departmentId) => {
     const deptName = departments.find(d => d.id === departmentId)?.name || ''
-    const message = `Assign ${user.full_name} to department ${deptName || 'Unassigned'}?`
-    if (!window.confirm(message)) return
     try {
-      // Use a SECURITY DEFINER RPC function to bypass RLS
-      const { data, error } = await supabase.rpc('admin_assign_department', {
-        p_user_id: user.id,
-        p_department_id: departmentId || null
-      })
+      const { error } = await supabase
+        .from('profiles')
+        .update({ department_id: departmentId || null })
+        .eq('id', user.id)
 
       if (error) throw error
 
-      // Re-fetch to confirm it persisted in the DB
-      const { data: refreshed, error: fetchErr } = await supabase
-        .from('profiles')
-        .select('*, departments(id, name)')
-        .eq('id', user.id)
-        .single()
-
-      if (fetchErr) throw fetchErr
-
-      if (refreshed.department_id !== (departmentId || null)) {
-        throw new Error('Department assignment did not persist. Please check Supabase logs.')
-      }
-
       toast.success(`${user.full_name} assigned to ${deptName || 'Unassigned'}.`)
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...refreshed } : u))
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, department_id: departmentId || null, departments: { id: departmentId, name: deptName } } : u))
     } catch (err) {
       console.error('Department assign failed:', err.message)
       toast.error(err.message || 'Failed to assign department.')
@@ -329,31 +336,48 @@ export const UsersPage = () => {
 
   return (
     <div className="space-y-6 font-sans">
-
       {/* ── Tab Navigation ──────────────────────────────────────────────── */}
       <div className="flex items-end gap-1 border-b border-gray-200">
         <button
           onClick={() => setActiveTab('directory')}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-lg border border-b-0 transition-all ${
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-xl border border-b-0 transition-all ${
             activeTab === 'directory'
-              ? 'bg-white text-[#006939] border-gray-200 shadow-sm -mb-px z-10'
+              ? 'bg-white text-[#006939] border-gray-200 shadow-xs -mb-px z-10'
               : 'bg-gray-50 text-gray-500 border-transparent hover:text-gray-700'
           }`}
         >
-          <Users size={15} />
-          User &amp; Employee Directory
+          <Users size={16} />
+          <span>User &amp; Employee Directory</span>
         </button>
+
+        {profile?.role === 'admin' && (
+          <button
+            onClick={() => setActiveTab('supervisors')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-xl border border-b-0 transition-all ${
+              activeTab === 'supervisors'
+                ? 'bg-white text-[#006939] border-gray-200 shadow-xs -mb-px z-10'
+                : 'bg-gray-50 text-gray-500 border-transparent hover:text-gray-700'
+            }`}
+          >
+            <Mail size={16} className="text-[#006939]" />
+            <span>Supervisor &amp; Admin Email Routing</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-black">
+              M365
+            </span>
+          </button>
+        )}
+
         {profile?.role === 'admin' && (
           <button
             onClick={() => setActiveTab('extra-hours')}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-lg border border-b-0 transition-all ${
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold rounded-t-xl border border-b-0 transition-all ${
               activeTab === 'extra-hours'
-                ? 'bg-white text-[#006939] border-gray-200 shadow-sm -mb-px z-10'
+                ? 'bg-white text-[#006939] border-gray-200 shadow-xs -mb-px z-10'
                 : 'bg-gray-50 text-gray-500 border-transparent hover:text-gray-700'
             }`}
           >
             <Clock4 size={15} />
-            Extra Hours
+            <span>Extra Hours</span>
           </button>
         )}
       </div>
@@ -361,6 +385,224 @@ export const UsersPage = () => {
       {/* ── Extra Hours Tab ──────────────────────────────────────────────── */}
       {activeTab === 'extra-hours' && profile?.role === 'admin' && (
         <ExtraHoursPage />
+      )}
+
+      {/* ── Supervisor & Admin Email Routing Tab ─────────────────────────── */}
+      {activeTab === 'supervisors' && profile?.role === 'admin' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-white p-6 rounded-3xl border border-emerald-200 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#006939] flex items-center gap-1.5">
+                  <ShieldCheck size={16} />
+                  Microsoft 365 Email Routing
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-gray-900 uppercase tracking-tight mt-1">
+                  Supervisor &amp; Admin Email Accounts
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 max-w-2xl leading-relaxed">
+                  Configure the destination email addresses for Department Supervisors and System Admins. When an employee requests leave, the automated notification email with the <strong>1-click approval link</strong> is delivered directly to their Microsoft 365 inbox.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchUsers}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-all shadow-xs"
+                >
+                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Department Supervisor Table */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                  <Building2 size={18} className="text-[#006939]" />
+                  Department Supervisors &amp; Notification Emails
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Leave applications from employees in these departments will be emailed to the supervisor below.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 text-gray-600 border-b border-gray-200 text-xs font-bold uppercase tracking-wider">
+                    <th className="px-6 py-4">Department</th>
+                    <th className="px-6 py-4">Assigned Supervisor</th>
+                    <th className="px-6 py-4">M365 Notification Email</th>
+                    <th className="px-6 py-4">Email Routing Status</th>
+                    <th className="px-6 py-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {departments.map((dept) => {
+                    const assignedSups = departmentSupervisorMap.get(dept.id) || []
+                    const primarySup = assignedSups[0]
+                    const hasEmail = Boolean(primarySup?.email && primarySup.email.includes('@'))
+
+                    return (
+                      <tr key={dept.id} className="hover:bg-gray-50/70 transition-colors">
+                        {/* Department Name */}
+                        <td className="px-6 py-4 font-bold text-gray-900">
+                          {dept.name}
+                        </td>
+
+                        {/* Assigned Supervisor */}
+                        <td className="px-6 py-4">
+                          {primarySup ? (
+                            <div>
+                              <p className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
+                                <Award size={14} className="text-blue-600" />
+                                {primarySup.full_name}
+                              </p>
+                              <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                                Staff ID: {primarySup.staff_id || 'N/A'}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 font-semibold inline-block">
+                              No supervisor assigned
+                            </span>
+                          )}
+                        </td>
+
+                        {/* M365 Email */}
+                        <td className="px-6 py-4">
+                          {primarySup ? (
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-mono font-medium ${hasEmail ? 'text-gray-800' : 'text-rose-600 italic'}`}>
+                                {primarySup.email || 'No email specified'}
+                              </span>
+                              <button
+                                onClick={() => handleOpenEmailEdit(primarySup)}
+                                className="p-1 text-gray-400 hover:text-[#006939] hover:bg-emerald-50 rounded transition-colors"
+                                title="Edit supervisor email"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Routes to Admin fallback</span>
+                          )}
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-6 py-4">
+                          {primarySup && hasEmail ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CheckCircle2 size={12} className="text-[#006939]" />
+                              Active (Direct M365)
+                            </span>
+                          ) : primarySup && !hasEmail ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <AlertCircle size={12} className="text-amber-600" />
+                              Needs Email
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                              Admin Fallback
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleOpenAssignModal(dept)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-[#006939] text-gray-700 hover:text-white text-xs font-bold transition-all shadow-xs"
+                          >
+                            <Edit2 size={12} />
+                            <span>{primarySup ? 'Change / Update' : 'Assign Supervisor'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* System Administrator Fallbacks Table */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                  <Shield size={18} className="text-[#006939]" />
+                  System Administrators (Fallback Recipients)
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  If an employee requests leave from a department without an assigned supervisor, the approval email is delivered to these Administrator accounts.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 text-gray-600 border-b border-gray-200 text-xs font-bold uppercase tracking-wider">
+                    <th className="px-6 py-4">Administrator</th>
+                    <th className="px-6 py-4">Staff ID</th>
+                    <th className="px-6 py-4">M365 Notification Email</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {adminUsers.map((admin) => (
+                    <tr key={admin.id} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="px-6 py-4 font-bold text-gray-900 flex items-center gap-2">
+                        <Shield size={14} className="text-[#006939]" />
+                        <span>{admin.full_name}</span>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs text-gray-500">
+                        {admin.staff_id || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-semibold text-gray-800">
+                            {admin.email || 'No email specified'}
+                          </span>
+                          <button
+                            onClick={() => handleOpenEmailEdit(admin)}
+                            className="p-1 text-gray-400 hover:text-[#006939] hover:bg-emerald-50 rounded transition-colors"
+                            title="Edit admin email"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 size={12} className="text-[#006939]" />
+                          Active Admin
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handleOpenEmailEdit(admin)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-[#006939] text-gray-700 hover:text-white text-xs font-bold transition-all shadow-xs"
+                        >
+                          <Edit2 size={12} />
+                          <span>Update Email</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Directory Tab ────────────────────────────────────────────────── */}
@@ -373,73 +615,72 @@ export const UsersPage = () => {
             User &amp; Employee Directory
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            Manage system operators (Users) and subjects (Employees). Assign roles, departments, and lock deactivated accounts.
+            Manage system operators (Users) and subjects (Employees). Assign roles, departments, DOE, and notification emails.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Link
             to="/users/new"
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-sm shadow-sm transition-all active:scale-[0.98] shrink-0 font-sans"
+            className="flex items-center gap-2 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-[0.98]"
           >
-            <PlusCircle size={16} />
-            <span>Onboard New User</span>
-          </Link>
-          <Link
-            to="/employees/new"
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] shrink-0 font-sans"
-          >
-            <PlusCircle size={16} />
-            <span>Onboard New Employee</span>
+            <PlusCircle size={15} />
+            <span>New User / Employee</span>
           </Link>
         </div>
       </div>
 
-      {/* Search Header panel */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between gap-4">
-        <div className="relative rounded-lg shadow-sm w-full max-w-sm">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-            <Search size={14} />
+      {/* Search & Role Filter Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative rounded-xl shadow-xs w-full max-w-sm">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+            <Search size={15} />
           </div>
           <input
             type="text"
-            placeholder="Search by Employee name or email..."
+            placeholder="Search by name, email, or Staff ID..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className="block w-full pl-9 pr-3 py-2 bg-[#F3F4F6] border border-gray-200 rounded-lg text-xs text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006939] focus:bg-white transition-all"
+            className="block w-full pl-10 pr-3 py-2 bg-gray-50/50 border border-gray-300 rounded-xl text-xs text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006939] focus:bg-white transition-all font-medium"
           />
         </div>
-        <div className="text-xs font-semibold text-gray-400">
-          Total: <span className="text-gray-700">{users.length} registered</span>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          {/* Role Filter */}
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#006939]"
+          >
+            <option value="all">All Roles ({users.length})</option>
+            <option value="supervisor">Supervisors ({users.filter(u => u.role === 'supervisor').length})</option>
+            <option value="admin">Admins ({users.filter(u => u.role === 'admin').length})</option>
+            <option value="rep">Reps ({users.filter(u => u.role === 'rep').length})</option>
+            <option value="employee">Employees ({users.filter(u => u.role === 'employee').length})</option>
+          </select>
+
+          <div className="text-xs font-semibold text-gray-400 whitespace-nowrap">
+            Showing <strong className="text-gray-700">{filteredUsers.length}</strong>
+          </div>
         </div>
       </div>
 
       {/* Users table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-6 space-y-4 animate-pulse">
-            <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-            {[1, 2, 3].map(idx => (
-              <div key={idx} className="flex gap-4 h-12 items-center border-b border-gray-100">
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/6"></div>
-                <div className="h-6 bg-gray-200 rounded-full w-16"></div>
-              </div>
-            ))}
+          <div className="p-12 text-center text-gray-500">
+            <Loader2 size={32} className="animate-spin text-[#006939] mx-auto mb-3" />
+            <p className="text-sm font-semibold">Loading users directory...</p>
           </div>
-        ) : users.length > 0 ? (
+        ) : filteredUsers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[700px]">
+            <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
-                 <tr className="bg-[#006939]/5 text-[#006939] border-b border-[#006939]/10 text-xs font-bold uppercase tracking-wider">
+                 <tr className="bg-gray-50/80 text-gray-600 border-b border-gray-200 text-xs font-bold uppercase tracking-wider">
                   <th className="px-6 py-4">Full Name</th>
                   <th className="px-6 py-4">Staff ID</th>
                   <th className="px-6 py-4">Position</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">DOE</th>
-                  <th className="px-6 py-4">Origin</th>
-                  <th className="px-6 py-4">Email</th>
+                  <th className="px-6 py-4">M365 Email</th>
                   <th className="px-6 py-4">Portal Role</th>
                   <th className="px-6 py-4">Department</th>
                   <th className="px-6 py-4">Login Access</th>
@@ -447,156 +688,68 @@ export const UsersPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-[#E8F5EE]/10 transition-colors">
-                    {/* Name cell */}
-                    <td className="px-6 py-4 font-semibold text-[#1A1A1A] group">
-                      <div className="flex items-center gap-2">
-                        <span>{user.full_name}</span>
-                        {profile?.role === 'admin' && (
-                          <button
-                            onClick={() => handleFullNameEdit(user)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
-                            title="Edit name"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        )}
-                      </div>
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50/70 transition-colors">
+                    {/* Name */}
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      <span>{user.full_name}</span>
                     </td>
 
-                    {/* Staff ID cell */}
-                    <td className="px-6 py-4 font-bold text-gray-700 group">
-                      <div className="flex items-center gap-2">
-                        <span>{user.staff_id || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}</span>
-                        {profile?.role === 'admin' && (
-                          <button
-                            onClick={() => handleStaffIdEdit(user)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
-                            title="Edit Staff ID"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        )}
-                      </div>
+                    {/* Staff ID */}
+                    <td className="px-6 py-4 font-bold text-gray-700 font-mono text-xs">
+                      {user.staff_id || <span className="text-gray-400 italic">N/A</span>}
                     </td>
 
-                    {/* Position cell */}
-                    <td className="px-6 py-4 text-gray-600 group">
-                      <div className="flex items-center gap-2">
-                        <span>{user.position || <span className="text-gray-400 text-xs font-normal italic">N/A</span>}</span>
-                        {profile?.role === 'admin' && (
-                          <button
-                            onClick={() => handlePositionEdit(user)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
-                            title="Edit position"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        )}
-                      </div>
+                    {/* Position */}
+                    <td className="px-6 py-4 text-gray-600 text-xs">
+                      {user.position || <span className="text-gray-400 italic">N/A</span>}
                     </td>
 
-                    {/* Category cell */}
-                    <td className="px-6 py-4 font-medium text-gray-600">
-                      {profile?.role === 'admin' ? (
-                        <select
-                          value={user.category || ''}
-                          onChange={e => handleCategoryChange(user, e.target.value)}
-                          className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
-                        >
-                          <option value="">Standard</option>
-                          <option value="Shift">Shift</option>
-                          <option value="Straight Day">Straight Day</option>
-                        </select>
-                      ) : (
-                        user.category === 'Shift' ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E1F5FE] text-[#0288D1] border border-[#B3E5FC]">
-                            Shift
-                          </span>
-                        ) : user.category === 'Straight Day' ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFFDE7] text-[#F57F17] border border-[#FFF9C4]">
-                            Straight Day
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            {user.category || 'Standard'}
-                          </span>
-                        )
-                      )}
-                    </td>
-
-                    {/* DOE cell */}
-                    <td className="px-6 py-4 text-xs font-mono text-gray-700 group">
-                      <div className="flex items-center gap-2">
-                        <span>{user.date_of_engagement || <span className="text-gray-400 font-sans italic">Not set</span>}</span>
-                        {profile?.role === 'admin' && (
-                          <button
-                            onClick={() => handleDoeEdit(user)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
-                            title="Edit Date of Engagement (YYYY-MM-DD)"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Origin (Native / Non-Native) cell */}
-                    <td className="px-6 py-4">
-                      {profile?.role === 'admin' ? (
-                        <select
-                          value={user.native_status || 'Native'}
-                          onChange={e => handleNativeStatusChange(user, e.target.value)}
-                          className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939] font-medium"
-                        >
-                          <option value="Native">Native (21d)</option>
-                          <option value="Non-Native">Non-Native (24d)</option>
-                        </select>
-                      ) : (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          user.native_status === 'Non-Native'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }`}>
-                          {user.native_status || 'Native'}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Email cell */}
-                    <td className="px-6 py-4 text-gray-500 font-medium">
+                    {/* Email with direct edit button */}
+                    <td className="px-6 py-4 text-gray-700 font-medium">
                       <div className="flex items-center gap-1.5">
-                        <Mail size={14} className="text-gray-400" />
-                        <span>{user.email}</span>
+                        <Mail size={13} className="text-gray-400 shrink-0" />
+                        <span className={`text-xs font-mono ${user.email ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+                          {user.email || 'No email'}
+                        </span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleOpenEmailEdit(user)}
+                            className="p-1 text-gray-400 hover:text-[#006939] hover:bg-emerald-50 rounded transition-colors"
+                            title="Edit email address for notifications"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
                       </div>
                     </td>
 
                     {/* Role badge and change */}
                     <td className="px-6 py-4">
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-1.5 max-w-[130px]">
                         <div>{getRoleBadge(user.role)}</div>
-                        <select
-                          value={user.role}
-                          onChange={(e) => handleRoleChange(user, e.target.value)}
-                          className="block w-full text-xs py-1 px-2 border border-gray-200 rounded text-gray-600 bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
-                        >
-                          <option value="employee">Employee</option>
-                          <option value="rep">Rep</option>
-                          <option value="supervisor">Supervisor</option>
-                          <option value="admin">Admin</option>
-                        </select>
+                        {profile?.role === 'admin' && (
+                          <select
+                            value={user.role}
+                            onChange={(e) => handleRoleChange(user, e.target.value)}
+                            className="block w-full text-xs py-1 px-2 border border-gray-300 rounded-lg text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
+                          >
+                            <option value="employee">Employee</option>
+                            <option value="rep">Rep</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
                       </div>
                     </td>
 
                     {/* Department cell */}
-                    <td className="px-6 py-4 font-medium text-gray-600">
+                    <td className="px-6 py-4 font-medium text-gray-600 text-xs">
                        {profile?.role === 'admin' ? (
                          <select
-                           key={`dept-select-${departments.length}`}
                            value={user.department_id || ''}
                            onChange={e => handleDepartmentChange(user, e.target.value)}
-                           className="block w-full text-xs py-1 px-2 border border-gray-200 rounded bg-gray-50 focus:outline-none focus:border-[#006939] focus:ring-1 focus:ring-[#006939]"
+                           className="block w-full text-xs py-1.5 px-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
                          >
                            <option value="">Unassigned</option>
                            {departments.map(dept => (
@@ -611,39 +764,36 @@ export const UsersPage = () => {
                     {/* Access switch status */}
                     <td className="px-6 py-4">
                       {user.is_active ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-[#D1FAE5] text-[#065F46] border border-[#059669]">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                           Active
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-850 border border-red-200">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
                           Suspended
                         </span>
                       )}
                     </td>
 
-                    {/* Toggle controller */}
+                    {/* Actions */}
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handleToggleStatus(user)}
-                        className={`p-1 rounded-lg transition-colors duration-150 ${user.is_active ? 'text-[#006939] hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}
-                        title={user.is_active ? "Click to suspend account access" : "Click to activate account access"}
-                      >
-                        {user.is_active ? (
-                          <ToggleRight size={28} className="stroke-[1.5]" />
-                        ) : (
-                          <ToggleLeft size={28} className="stroke-[1.5]" />
-                        )}
-                      </button>
-                      {/* Admin Delete Button */}
-                      {profile?.role === 'admin' && (
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
-                          onClick={() => handleDelete(user)}
-                          className="ml-2 text-red-600 hover:text-red-800"
-                          title="Delete user/employee"
+                          onClick={() => handleToggleStatus(user)}
+                          className={`p-1 rounded-lg transition-colors ${user.is_active ? 'text-[#006939] hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}
+                          title={user.is_active ? "Suspend account access" : "Activate account access"}
                         >
-                          <Trash2 size={20} />
+                          {user.is_active ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
                         </button>
-                      )}
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDelete(user)}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                            title="Delete user"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -658,6 +808,156 @@ export const UsersPage = () => {
         )}
       </div>
       </>
+      )}
+
+      {/* ── EMAIL EDIT MODAL ──────────────────────────────────────────────── */}
+      {emailModalOpen && selectedUserForEmail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-gray-100 overflow-hidden animate-scale-up">
+            <div className="p-5 bg-gradient-to-r from-[#004D2A] to-[#006939] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Mail size={20} className="text-[#FDB913]" />
+                <h3 className="font-bold text-base">
+                  Update Notification Email
+                </h3>
+              </div>
+              <button
+                onClick={() => setEmailModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-white/80"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEmail} className="p-6 space-y-4">
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 text-xs text-emerald-950 space-y-1">
+                <p><strong>User:</strong> {selectedUserForEmail.full_name}</p>
+                <p><strong>Role:</strong> <span className="capitalize">{selectedUserForEmail.role}</span> • <strong>Dept:</strong> {selectedUserForEmail.departments?.name || 'Unassigned'}</p>
+                <p className="text-[11px] text-gray-500 pt-1">
+                  Leave approval notifications will be delivered to this Microsoft 365 address.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Microsoft 365 Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. kwame.asante@cbi-africa.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] font-medium"
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEmailModalOpen(false)}
+                  disabled={savingEmail}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEmail}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {savingEmail && <Loader2 size={14} className="animate-spin" />}
+                  <span>Save Email</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ASSIGN SUPERVISOR MODAL ───────────────────────────────────────── */}
+      {assignModalOpen && assignDept && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-gray-100 overflow-hidden animate-scale-up">
+            <div className="p-5 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Award size={20} className="text-[#FDB913]" />
+                <h3 className="font-bold text-base">
+                  Assign Supervisor: {assignDept.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setAssignModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-white/80"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSupervisorAssignment} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Select Colleague to Designate as Supervisor *
+                </label>
+                <select
+                  required
+                  value={assignUserId}
+                  onChange={(e) => {
+                    const selId = e.target.value
+                    setAssignUserId(selId)
+                    const found = users.find(u => u.id === selId)
+                    if (found && found.email) {
+                      setAssignEmail(found.email)
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white font-medium text-gray-800"
+                >
+                  <option value="">-- Choose Colleague --</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} {u.staff_id ? `(${u.staff_id})` : ''} - Current Role: {u.role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Supervisor Microsoft 365 Email (for Leave Approvals)
+                </label>
+                <input
+                  type="email"
+                  placeholder="e.g. supervisor@cbi-africa.com"
+                  value={assignEmail}
+                  onChange={(e) => setAssignEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] font-medium"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Every leave request from {assignDept.name} will be emailed here with the 1-click approval link.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setAssignModalOpen(false)}
+                  disabled={savingAssignment}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAssignment}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {savingAssignment && <Loader2 size={14} className="animate-spin" />}
+                  <span>Save Supervisor</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

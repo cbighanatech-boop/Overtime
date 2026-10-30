@@ -34,8 +34,8 @@ export const notifySupervisorsOfLeaveRequest = async ({
     const { data: supervisors, error: supError } = await supQuery
     if (supError) throw supError
 
-    // If no direct supervisor assigned to this department, look for system Admins
-    let recipients = supervisors || []
+    // If no direct supervisor with valid email assigned to this department, look for system Admins
+    let recipients = (supervisors || []).filter(s => s.email && s.email.includes('@'))
     if (recipients.length === 0) {
       const { data: adminFallbacks } = await supabase
         .from('profiles')
@@ -43,7 +43,7 @@ export const notifySupervisorsOfLeaveRequest = async ({
         .eq('is_active', true)
         .eq('role', 'admin')
 
-      recipients = adminFallbacks || []
+      recipients = (adminFallbacks || []).filter(s => s.email && s.email.includes('@'))
     }
 
     if (recipients.length === 0) {
