@@ -107,6 +107,37 @@ export const LeaveDashboardPage = () => {
       if (profError) throw profError
 
       const eligible = (profData || []).filter(p => isEligibleForLeave(p))
+
+      // Fallback: Query latest positive hourly rates from Overtime App (overtime_records) for any profiles with 0 or missing rate
+      const { data: otRates } = await supabase
+        .from('overtime_records')
+        .select('employee_id, employee_name, hourly_rate, captured_at')
+        .gt('hourly_rate', 0)
+        .order('captured_at', { ascending: false })
+
+      const otRateById = new Map()
+      const otRateByName = new Map()
+      for (const r of otRates || []) {
+        if (r.employee_id && !otRateById.has(r.employee_id)) {
+          otRateById.set(r.employee_id, Number(r.hourly_rate))
+        }
+        if (r.employee_name && !otRateByName.has(r.employee_name.toLowerCase().trim())) {
+          otRateByName.set(r.employee_name.toLowerCase().trim(), Number(r.hourly_rate))
+        }
+      }
+
+      eligible.forEach(p => {
+        let rate = Number(p.hourly_rate || 0)
+        if (rate === 0) {
+          const fallback = otRateById.get(p.staff_id) || 
+                           otRateById.get(p.id) || 
+                           otRateByName.get((p.full_name || '').toLowerCase().trim())
+          if (fallback) {
+            p.hourly_rate = fallback
+          }
+        }
+      })
+
       setEligibleProfiles(eligible)
 
       // 4. Fetch leave requests

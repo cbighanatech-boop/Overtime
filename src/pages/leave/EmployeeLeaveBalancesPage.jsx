@@ -31,7 +31,10 @@ import {
   TrendingUp,
   Sparkles,
   Info,
-  Banknote
+  Banknote,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -53,6 +56,11 @@ export const EmployeeLeaveBalancesPage = () => {
   const [employeeRequests, setEmployeeRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAllStatutory, setShowAllStatutory] = useState(false)
+
+  // Hourly Rate Edit State (Overtime Profile)
+  const [isEditingRate, setIsEditingRate] = useState(false)
+  const [newRateInput, setNewRateInput] = useState('')
+  const [savingRate, setSavingRate] = useState(false)
 
   // Sync year with query param
   const handleYearChange = (year) => {
@@ -105,6 +113,31 @@ export const EmployeeLeaveBalancesPage = () => {
         setLoading(false)
         return
       }
+
+      // Synchronize / Resolve Hourly Rate from the Overtime App:
+      // Primary: profiles.hourly_rate
+      // Fallback: look up their latest recorded rate in overtime_records
+      let resolvedHourlyRate = Number(empData.hourly_rate || 0)
+      let rateSource = 'Overtime Profile'
+
+      if (resolvedHourlyRate === 0) {
+        const empStaffId = empData.staff_id || empData.id
+        const { data: pastOtRecord } = await supabase
+          .from('overtime_records')
+          .select('hourly_rate')
+          .or(`employee_id.eq.${empStaffId},employee_name.ilike.%${empData.full_name}%`)
+          .gt('hourly_rate', 0)
+          .order('captured_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (pastOtRecord && Number(pastOtRecord.hourly_rate) > 0) {
+          resolvedHourlyRate = Number(pastOtRecord.hourly_rate)
+          rateSource = 'Overtime Log'
+          empData.hourly_rate = resolvedHourlyRate
+        }
+      }
+      empData.rate_source = rateSource
 
       setEmployee(empData)
 
@@ -256,6 +289,37 @@ export const EmployeeLeaveBalancesPage = () => {
             <AlertCircle size={11} /> Pending
           </span>
         )
+    }
+  }
+
+  // Save / Update Hourly Rate in Overtime Profile
+  const handleSaveHourlyRate = async () => {
+    const val = parseFloat(newRateInput)
+    if (isNaN(val) || val < 0) {
+      toast.error('Please enter a valid positive hourly rate')
+      return
+    }
+    setSavingRate(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ hourly_rate: val })
+        .eq('id', employee.id)
+
+      if (error) throw error
+
+      setEmployee(prev => ({
+        ...prev,
+        hourly_rate: val,
+        rate_source: 'Overtime Profile (Updated)'
+      }))
+      setIsEditingRate(false)
+      toast.success(`Hourly rate updated to GHS ${val.toFixed(2)} in Overtime profile`)
+    } catch (err) {
+      console.error('Failed to update hourly rate:', err)
+      toast.error('Failed to update hourly rate in Overtime profile')
+    } finally {
+      setSavingRate(false)
     }
   }
 
@@ -454,15 +518,62 @@ export const EmployeeLeaveBalancesPage = () => {
                 </div>
 
                 <div>
-                  <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
-                    Day's Value (8h)
-                  </span>
-                  <p className="font-extrabold text-[#006939] mt-0.5 text-sm">
-                    GHS {dayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <span className="text-[10px] text-gray-400 font-semibold">
-                    @ GHS {hourlyRate.toFixed(2)}/hr
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
+                      Day's Value (8h)
+                    </span>
+                    {isAdmin(profile) && !isEditingRate && (
+                      <button
+                        onClick={() => {
+                          setNewRateInput(String(hourlyRate || ''))
+                          setIsEditingRate(true)
+                        }}
+                        className="text-[#006939] hover:text-[#004D2A] p-0.5 rounded hover:bg-emerald-50 transition-colors"
+                        title="Edit employee's hourly rate in Overtime profile"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingRate ? (
+                    <div className="mt-1 flex items-center gap-1">
+                      <span className="text-xs font-bold text-gray-500">GHS</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={newRateInput}
+                        onChange={(e) => setNewRateInput(e.target.value)}
+                        className="w-16 px-1.5 py-0.5 border border-emerald-300 rounded text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#006939]"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSaveHourlyRate}
+                        disabled={savingRate}
+                        className="p-1 rounded bg-[#006939] text-white hover:bg-[#004D2A]"
+                        title="Save Rate"
+                      >
+                        {savingRate ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingRate(false)}
+                        className="p-1 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        title="Cancel"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="font-extrabold text-[#006939] mt-0.5 text-sm">
+                        GHS {dayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <span className="text-[10px] text-gray-500 font-semibold block truncate" title={`Hourly rate from ${employee.rate_source || 'Overtime app'}`}>
+                        @ GHS {hourlyRate.toFixed(2)}/hr ({employee.rate_source || 'Overtime app'})
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -729,7 +840,7 @@ export const EmployeeLeaveBalancesPage = () => {
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        Statutory Valuation: Hourly Rate (GHS {hourlyRate.toFixed(2)}) × 8 working hours = 1 Day's Value
+                        Statutory Valuation: Hourly Rate (GHS {hourlyRate.toFixed(2)} from {employee.rate_source || 'Overtime App'}) × 8 working hours = 1 Day's Value
                       </p>
                     </div>
                   </div>

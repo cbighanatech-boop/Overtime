@@ -574,3 +574,23 @@ export const LEAVE_STATUS_COLORS = {
     dot: 'bg-gray-500'
   }
 }
+
+/**
+ * Calculate the financial valuation of leave days based on the employee's hourly rate from the Overtime app.
+ * Statutory formula: hourly_rate * 8 = 1 day's value.
+ *
+ * @param {number|string} hourlyRate - Hourly rate from employee profile or overtime record
+ * @param {number|string} days - Number of leave days
+ * @returns {{ hourlyRate: number, dayValue: number, totalCost: number }}
+ */
+export const calculateLeaveCost = (hourlyRate, days = 0) => {
+  const rate = Number(hourlyRate || 0)
+  const dayValue = rate * 8
+  const totalCost = Number(days || 0) * dayValue
+  return {
+    hourlyRate: rate,
+    dayValue,
+    totalCost
+  }
+}
+

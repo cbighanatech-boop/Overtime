@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   CalendarCheck,
   AlertTriangle,
-  Lock
+  Lock,
+  Banknote
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -109,11 +110,40 @@ export const LeaveRequestDetailPage = () => {
         const availableDays = Math.max(0, entitled - approvedDays)
         const exceedsLimit = Number(data.total_days || 0) > availableDays
 
+        // Resolve Hourly Rate from the Overtime App:
+        // Primary: empProfile.hourly_rate
+        // Fallback: look up their latest logged hourly_rate in overtime_records
+        let hourlyRate = Number(empProfile?.hourly_rate || 0)
+        let rateSource = 'Overtime Profile'
+
+        if (hourlyRate === 0) {
+          const { data: pastOtRecord } = await supabase
+            .from('overtime_records')
+            .select('hourly_rate')
+            .or(`employee_id.eq.${staffId},employee_name.ilike.%${data.employee_name}%`)
+            .gt('hourly_rate', 0)
+            .order('captured_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (pastOtRecord && Number(pastOtRecord.hourly_rate) > 0) {
+            hourlyRate = Number(pastOtRecord.hourly_rate)
+            rateSource = 'Overtime Log'
+          }
+        }
+
+        const dayValue = hourlyRate * 8
+        const requestCost = Number(data.total_days || 0) * dayValue
+
         setBalanceInfo({
           entitledDays: entitled,
           approvedDays,
           availableDays,
-          exceedsLimit
+          exceedsLimit,
+          hourlyRate,
+          dayValue,
+          requestCost,
+          rateSource
         })
       } catch (balErr) {
         console.warn('Could not compute balance limit:', balErr.message)
@@ -454,7 +484,7 @@ export const LeaveRequestDetailPage = () => {
               </p>
             </div>
 
-            <div className="text-right sm:text-right">
+            <div className="flex items-center gap-3 self-start sm:self-auto">
               <div className="inline-block p-3 bg-white/10 rounded-2xl text-center">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/70 block">Duration</span>
                 <span className="text-2xl font-black text-[#FDB913] leading-none">
@@ -462,6 +492,18 @@ export const LeaveRequestDetailPage = () => {
                 </span>
                 <span className="text-[10px] text-white/80 block mt-0.5">Working Days</span>
               </div>
+
+              {balanceInfo?.requestCost !== undefined && (
+                <div className="inline-block p-3 bg-white/10 rounded-2xl text-center border border-white/15">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#FDB913] block">Request Cost</span>
+                  <span className="text-2xl font-black text-white leading-none">
+                    GHS {balanceInfo.requestCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[10px] text-white/75 block mt-0.5" title={`Rate: GHS ${balanceInfo.hourlyRate.toFixed(2)}/hr from ${balanceInfo.rateSource}`}>
+                    @ GHS {balanceInfo.dayValue.toFixed(2)}/day
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -600,6 +642,37 @@ export const LeaveRequestDetailPage = () => {
               <p className="text-base font-bold text-gray-800 mt-0.5">
                 {format(parseISO(request.end_date), 'EEEE, dd MMM yyyy')}
               </p>
+            </div>
+          </div>
+
+          {/* Financial Cost Valuation (Overtime App Rate) */}
+          <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-[#006939] text-white shadow-sm shrink-0">
+                <Banknote size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-gray-900 uppercase tracking-wider text-[11px]">
+                    Leave Financial Valuation
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-white text-[#006939] font-bold text-[10px] border border-emerald-200 shadow-2xs">
+                    GHS {balanceInfo?.dayValue?.toFixed(2) || '0.00'} / day
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-600 mt-0.5">
+                  Valuation determined by employee's hourly rate of <strong>GHS {balanceInfo?.hourlyRate?.toFixed(2) || '0.00'}/hr</strong> from {balanceInfo?.rateSource || 'Overtime app'} (8 working hours/day).
+                </p>
+              </div>
+            </div>
+
+            <div className="text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-emerald-200/60">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">
+                Total Application Cost
+              </span>
+              <span className="text-xl font-black text-[#006939]">
+                GHS {balanceInfo?.requestCost ? balanceInfo.requestCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+              </span>
             </div>
           </div>
 

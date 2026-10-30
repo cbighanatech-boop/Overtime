@@ -31,7 +31,9 @@ import {
   BadgeCheck,
   Calendar,
   Sparkles,
-  UploadCloud
+  UploadCloud,
+  Banknote,
+  Coins
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -81,6 +83,7 @@ export const LeaveBalancesPage = () => {
           staff_id,
           department_id,
           company,
+          hourly_rate,
           date_of_engagement,
           native_status,
           departments (name)
@@ -98,6 +101,37 @@ export const LeaveBalancesPage = () => {
       
       // Filter out Abanach
       const emps = (empData || []).filter(isEligibleForLeave)
+
+      // Query latest positive hourly rates from Overtime App (overtime_records) for fallback
+      const { data: otRates } = await supabase
+        .from('overtime_records')
+        .select('employee_id, employee_name, hourly_rate, captured_at')
+        .gt('hourly_rate', 0)
+        .order('captured_at', { ascending: false })
+
+      const otRateById = new Map()
+      const otRateByName = new Map()
+      for (const r of otRates || []) {
+        if (r.employee_id && !otRateById.has(r.employee_id)) {
+          otRateById.set(r.employee_id, Number(r.hourly_rate))
+        }
+        if (r.employee_name && !otRateByName.has(r.employee_name.toLowerCase().trim())) {
+          otRateByName.set(r.employee_name.toLowerCase().trim(), Number(r.hourly_rate))
+        }
+      }
+
+      emps.forEach(emp => {
+        let rate = Number(emp.hourly_rate || 0)
+        if (rate === 0) {
+          const fallback = otRateById.get(emp.staff_id) || 
+                           otRateById.get(emp.id) || 
+                           otRateByName.get((emp.full_name || '').toLowerCase().trim())
+          if (fallback) {
+            emp.hourly_rate = fallback
+          }
+        }
+      })
+
       setEmployees(emps)
 
       // 4. Fetch all approved leave requests for the selected year
@@ -156,12 +190,24 @@ export const LeaveBalancesPage = () => {
 
           const remaining = Math.max(0, entitled - used)
 
+          // Financial Valuation from Overtime App: hourly_rate * 8 = 1 day's value
+          const hourlyRate = Number(emp.hourly_rate || 0)
+          const dayValue = hourlyRate * 8
+          const entitledCost = entitled * dayValue
+          const usedCost = used * dayValue
+          const remainingCost = remaining * dayValue
+
           balanceRows.push({
             employeeId: staffId,
             employeeName: emp.full_name,
             departmentName: emp.departments?.name || 'Department',
             departmentId: emp.department_id,
             company: emp.company || 'CBI',
+            hourlyRate,
+            dayValue,
+            entitledCost,
+            usedCost,
+            remainingCost,
             dateOfEngagement: emp.date_of_engagement || null,
             nativeStatus: emp.native_status || 'Native',
             tenureYears: breakdown.tenureYears ?? null,
@@ -219,15 +265,45 @@ export const LeaveBalancesPage = () => {
     const totalRemaining = annualBal ? annualBal.remainingDays : 0
     const totalEntitled = annualBal ? annualBal.entitledDays : 0
     const totalUsed = annualBal ? annualBal.usedDays : 0
+    const hourlyRate = annualBal ? annualBal.hourlyRate : 0
+    const dayValue = annualBal ? annualBal.dayValue : 0
+    const entitledCost = annualBal ? annualBal.entitledCost : 0
+    const usedCost = annualBal ? annualBal.usedCost : 0
+    const remainingCost = annualBal ? annualBal.remainingCost : 0
     return {
       annualBal,
       otherUtilized,
       totalRemaining,
       totalEntitled,
       totalUsed,
+      hourlyRate,
+      dayValue,
+      entitledCost,
+      usedCost,
+      remainingCost,
       empBals
     }
   }
+
+  // Summary aggregates across filtered employees
+  const summaryAggregates = filteredEmployees.reduce((acc, emp) => {
+    const staffId = emp.staff_id || emp.full_name
+    const sum = getEmployeeSummary(staffId)
+    acc.totalEntitledDays += sum.totalEntitled
+    acc.totalUsedDays += sum.totalUsed
+    acc.totalRemainingDays += sum.totalRemaining
+    acc.totalEntitledCost += sum.entitledCost
+    acc.totalUsedCost += sum.usedCost
+    acc.totalRemainingCost += sum.remainingCost
+    return acc
+  }, {
+    totalEntitledDays: 0,
+    totalUsedDays: 0,
+    totalRemainingDays: 0,
+    totalEntitledCost: 0,
+    totalUsedCost: 0,
+    totalRemainingCost: 0
+  })
 
   // Filter rows
   const filteredBalances = balances.filter(b => {
@@ -277,6 +353,11 @@ export const LeaveBalancesPage = () => {
           'Bonus Days': row.bonusDays || 0,
           'Used Days': row.usedDays,
           'Remaining Days': row.remainingDays,
+          'Hourly Rate (GHS)': row.hourlyRate || 0,
+          'Day Value (GHS)': row.dayValue || 0,
+          'Annual Cost (GHS)': row.isAnnual ? row.entitledCost : 0,
+          'Used Cost (GHS)': row.isAnnual ? row.usedCost : 0,
+          'Remaining Cost (GHS)': row.isAnnual ? row.remainingCost : 0,
           'Utilization (%)': `${pct}%`,
           'Breakdown Note': row.breakdownText || ''
         }
@@ -389,6 +470,57 @@ export const LeaveBalancesPage = () => {
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
+        </div>
+      </div>
+
+      {/* Financial & Days Summary Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
+            CBI Employees ({selectedYear})
+          </span>
+          <p className="text-2xl font-black text-gray-900 mt-0.5">
+            {filteredEmployees.length}
+          </p>
+          <span className="text-[11px] text-gray-500 font-medium">
+            Eligible CBI personnel
+          </span>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
+            Annual Leave Days
+          </span>
+          <p className="text-2xl font-black text-gray-900 mt-0.5">
+            {summaryAggregates.totalUsedDays} <span className="text-xs text-gray-400 font-normal">/ {summaryAggregates.totalEntitledDays}d</span>
+          </p>
+          <span className="text-[11px] text-[#006939] font-bold">
+            {summaryAggregates.totalRemainingDays} days available
+          </span>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-emerald-200 shadow-sm bg-gradient-to-br from-emerald-50/40 to-white">
+          <span className="text-[11px] font-bold text-[#006939] uppercase tracking-wider block">
+            Annual Leave Cost Liability
+          </span>
+          <p className="text-xl sm:text-2xl font-black text-[#006939] mt-0.5">
+            GHS {summaryAggregates.totalEntitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <span className="text-[11px] text-gray-500 font-medium">
+            Overtime rate × 8 hrs/day
+          </span>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-amber-200 shadow-sm bg-gradient-to-br from-amber-50/40 to-white">
+          <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">
+            Incurred Cost of Days Taken
+          </span>
+          <p className="text-xl sm:text-2xl font-black text-amber-800 mt-0.5">
+            GHS {summaryAggregates.totalUsedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <span className="text-[11px] text-amber-700 font-medium">
+            Remaining: GHS {summaryAggregates.totalRemainingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
 
@@ -578,6 +710,16 @@ export const LeaveBalancesPage = () => {
                               ℹ️ Prorated: {annual.entitledDays}d ({annual.monthsFromDoeToEndOfYear} mos from DOE to year-end)
                             </p>
                           )}
+
+                          {/* Financial Cost of Annual Leave Days (from Overtime rate) */}
+                          <div className="pt-2 border-t border-gray-200/70 flex items-center justify-between text-[11px]">
+                            <span className="text-gray-500 font-medium" title={`Overtime rate: GHS ${summary.hourlyRate.toFixed(2)}/hr`}>
+                              Day Value: <strong className="text-gray-800">GHS {summary.dayValue.toFixed(2)}</strong>
+                            </span>
+                            <span className="font-extrabold text-[#006939] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              Cost: GHS {summary.entitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
                         </div>
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-400">
@@ -641,6 +783,8 @@ export const LeaveBalancesPage = () => {
                     <th className="py-3.5 px-6">Accumulated</th>
                     <th className="py-3.5 px-6">Used (Days)</th>
                     <th className="py-3.5 px-6">Available</th>
+                    <th className="py-3.5 px-6">Day Value (8h)</th>
+                    <th className="py-3.5 px-6">Leave Cost (GHS)</th>
                     <th className="py-3.5 px-6 text-right">Utilization</th>
                   </tr>
                 </thead>
@@ -730,6 +874,28 @@ export const LeaveBalancesPage = () => {
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-emerald-50 text-[#006939] font-black text-xs border border-emerald-100">
                             {row.remainingDays} days
                           </span>
+                        </td>
+                        <td className="py-3.5 px-6">
+                          <span className="font-extrabold text-gray-800 text-xs block">
+                            GHS {row.dayValue ? row.dayValue.toFixed(2) : '0.00'}
+                          </span>
+                          <span className="text-[10px] text-gray-400 block truncate" title={`Hourly rate from Overtime app: GHS ${row.hourlyRate ? row.hourlyRate.toFixed(2) : '0.00'}/hr`}>
+                            @ GHS {row.hourlyRate ? row.hourlyRate.toFixed(2) : '0.00'}/h
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-6">
+                          {row.isAnnual ? (
+                            <div>
+                              <span className="font-black text-[#006939] text-xs block">
+                                GHS {row.entitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-amber-700 font-semibold block">
+                                Used: GHS {row.usedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-6 text-right">
                           <div className="flex items-center justify-end gap-2">
