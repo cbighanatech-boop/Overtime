@@ -30,7 +30,8 @@ import {
   ChevronRight,
   TrendingUp,
   Sparkles,
-  Info
+  Info,
+  Banknote
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
@@ -79,6 +80,7 @@ export const EmployeeLeaveBalancesPage = () => {
           date_of_engagement,
           native_status,
           department_id,
+          hourly_rate,
           created_at,
           departments (
             id,
@@ -218,6 +220,15 @@ export const EmployeeLeaveBalancesPage = () => {
   const totalUsed = annualLeaveBalance ? annualLeaveBalance.usedDays : 0
   const totalPending = annualLeaveBalance ? annualLeaveBalance.pendingDays : 0
   const totalRemaining = annualLeaveBalance ? annualLeaveBalance.remainingDays : 0
+
+  // Financial Valuation: statutory formula (hourly_rate * 8 = 1 day's value)
+  const hourlyRate = Number(employee?.hourly_rate || 0)
+  const dayValue = hourlyRate * 8
+  const entitledCost = totalEntitled * dayValue
+  const accumulatedCost = totalAccumulated * dayValue
+  const usedCost = totalUsed * dayValue
+  const pendingCost = totalPending * dayValue
+  const remainingCost = totalRemaining * dayValue
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -412,7 +423,7 @@ export const EmployeeLeaveBalancesPage = () => {
               </div>
 
               {/* Engagement & Statutory Details Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-gray-50/80 border border-gray-200 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 p-4 rounded-2xl bg-gray-50/80 border border-gray-200 text-xs">
                 <div>
                   <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
                     Date of Engagement (DOE)
@@ -435,11 +446,35 @@ export const EmployeeLeaveBalancesPage = () => {
 
                 <div>
                   <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
-                    Annual Leave Entitlement
+                    Annual Leave Days
                   </span>
                   <p className="font-extrabold text-gray-900 mt-0.5 text-sm">
                     {annualLeaveBalance ? `${annualLeaveBalance.entitledDays} Days` : '21 Days'}
                   </p>
+                </div>
+
+                <div>
+                  <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
+                    Day's Value (8h)
+                  </span>
+                  <p className="font-extrabold text-[#006939] mt-0.5 text-sm">
+                    GHS {dayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <span className="text-[10px] text-gray-400 font-semibold">
+                    @ GHS {hourlyRate.toFixed(2)}/hr
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-gray-400 font-bold uppercase tracking-wider block text-[10px]">
+                    Annual Leave Cost
+                  </span>
+                  <p className="font-extrabold text-gray-900 mt-0.5 text-sm">
+                    GHS {entitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <span className="text-[10px] text-emerald-600 font-semibold">
+                    Full Entitlement Value
+                  </span>
                 </div>
 
                 <div>
@@ -500,12 +535,18 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-gray-900 mt-1">
                 {totalEntitled} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <span className="text-[10px] font-bold uppercase text-gray-400 block">Annual Leave Cost</span>
+                <p className="text-xs font-black text-gray-900">
+                  GHS {entitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <p className="text-[11px] text-gray-500 mt-1">
                 {annualLeaveBalance?.isProrated
-                  ? `Prorated from DOE (${annualLeaveBalance.monthsFromDoeToEndOfYear} mos)`
+                  ? `Prorated (${annualLeaveBalance.monthsFromDoeToEndOfYear} mos)`
                   : annualLeaveBalance?.bonusDays > 0
-                  ? `Annual Leave (incl. +${annualLeaveBalance.bonusDays} anniversary)`
-                  : 'Annual Leave (statutory)'}
+                  ? `Incl. +${annualLeaveBalance.bonusDays}d bonus`
+                  : 'Statutory base'}
               </p>
             </div>
 
@@ -516,8 +557,14 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-blue-900 mt-1">
                 {totalAccumulated} <span className="text-xs font-semibold text-blue-400">days</span>
               </p>
+              <div className="mt-2 pt-2 border-t border-blue-100">
+                <span className="text-[10px] font-bold uppercase text-blue-600 block">Accrued Value</span>
+                <p className="text-xs font-black text-blue-900">
+                  GHS {accumulatedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <p className="text-[11px] text-blue-600 mt-1 font-medium">
-                {annualLeaveBalance?.monthsSpent !== undefined ? `${annualLeaveBalance.monthsSpent} months spent in ${selectedYear}` : 'Earned to date'}
+                {annualLeaveBalance?.monthsSpent !== undefined ? `${annualLeaveBalance.monthsSpent} mos spent in ${selectedYear}` : 'Earned to date'}
               </p>
             </div>
 
@@ -528,6 +575,12 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-amber-700 mt-1">
                 {totalUsed} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <span className="text-[10px] font-bold uppercase text-amber-700 block">Incurred Cost</span>
+                <p className="text-xs font-black text-amber-800">
+                  GHS {usedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <p className="text-[11px] text-gray-500 mt-1">Annual leave utilized</p>
             </div>
 
@@ -538,6 +591,12 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-blue-700 mt-1">
                 {totalPending} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <span className="text-[10px] font-bold uppercase text-blue-600 block">Pending Value</span>
+                <p className="text-xs font-black text-blue-800">
+                  GHS {pendingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <p className="text-[11px] text-gray-500 mt-1">Awaiting approval</p>
             </div>
 
@@ -548,6 +607,12 @@ export const EmployeeLeaveBalancesPage = () => {
               <p className="text-3xl font-black text-[#006939] mt-1">
                 {totalRemaining} <span className="text-xs font-semibold text-[#006939]/70">days</span>
               </p>
+              <div className="mt-2 pt-2 border-t border-emerald-200">
+                <span className="text-[10px] font-bold uppercase text-emerald-700 block">Remaining Liability</span>
+                <p className="text-xs font-black text-[#006939]">
+                  GHS {remainingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
               <p className="text-[11px] text-emerald-700 mt-1 font-medium">Ready to be utilized</p>
             </div>
           </div>
@@ -646,6 +711,49 @@ export const EmployeeLeaveBalancesPage = () => {
                   <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/60 px-2.5 py-0.5 rounded-full">
                     {annualLeaveBalance.remainingDays} days ready for booking
                   </span>
+                </div>
+
+                {/* Financial Cost Valuation Callout */}
+                <div className="mt-4 p-4 rounded-2xl bg-white/90 border border-emerald-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-[#006939] text-white shadow-sm shrink-0">
+                      <Banknote size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">
+                          Annual Leave Cost Valuation
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-[#006939] font-bold text-[10px] border border-emerald-200">
+                          GHS {dayValue.toFixed(2)} / day
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Statutory Valuation: Hourly Rate (GHS {hourlyRate.toFixed(2)}) × 8 working hours = 1 Day's Value
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 divide-x divide-gray-200 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-gray-400 block">Total Entitled</span>
+                      <span className="font-black text-gray-900 text-sm">
+                        GHS {entitledCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="pl-4">
+                      <span className="text-[10px] font-bold uppercase text-amber-700 block">Incurred Cost</span>
+                      <span className="font-black text-amber-800 text-sm">
+                        GHS {usedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="pl-4">
+                      <span className="text-[10px] font-bold uppercase text-emerald-700 block">Remaining Liability</span>
+                      <span className="font-black text-[#006939] text-sm">
+                        GHS {remainingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
