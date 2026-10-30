@@ -266,6 +266,35 @@ export const calculateAnnualLeaveEntitlement = (employee, forYear = new Date().g
 }
 
 /**
+ * Calculate Annual Leave Entitlement specifically for the Team Leave Planner (/leave/planner).
+ * In the planner, Reps and Supervisors plan the full annual leave entitlement for employees:
+ * - Native: 21 days
+ * - Non-Native: 24 days
+ * - 3rd or 4th anniversary year (3-4 years tenure): +3 bonus days (total 24 or 27 days)
+ * - 5th or more anniversary year (>= 5 years tenure): +4 bonus days (total 25 or 28 days)
+ * 
+ * @param {Object} employee - Employee profile (has native_status and date_of_engagement)
+ * @param {number} forYear - Planning calendar year
+ * @returns {number} Full annual planner entitlement days
+ */
+export const calculatePlannerAnnualEntitlement = (employee, forYear = new Date().getFullYear()) => {
+  if (!employee) return 21
+
+  const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
+  const baseDays = isNonNative ? 24 : 21
+
+  const tenureYears = getTenureYears(employee, forYear)
+  let bonusDays = 0
+  if (tenureYears === 3 || tenureYears === 4) {
+    bonusDays = 3
+  } else if (tenureYears >= 5) {
+    bonusDays = 4
+  }
+
+  return baseDays + bonusDays
+}
+
+/**
  * Calculate Accumulated (Accrued) Leave Balance to date according to CBI policy:
  * - Rate: (baseDays / 12) per month
  * - For an employee joined in the current year:

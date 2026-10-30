@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
 import { 
   isEligibleForLeave, 
-  calculateAnnualLeaveEntitlement, 
+  calculatePlannerAnnualEntitlement, 
   getTenureYears, 
   parseEngagementDate,
   LEAVE_YEARS 
@@ -76,6 +76,15 @@ export const TeamLeavePlannerPage = () => {
   // Modal for editing employee planning notes
   const [editingEmployeeNotes, setEditingEmployeeNotes] = useState(null)
   const [notesText, setNotesText] = useState('')
+
+  // Modal for quick-populating annual leave days
+  const [populatingEmployee, setPopulatingEmployee] = useState(null)
+  const [populateMode, setPopulateMode] = useState('single')
+  const [populateMonth, setPopulateMonth] = useState(8)
+  const [splitMonth1, setSplitMonth1] = useState(4)
+  const [splitDays1, setSplitDays1] = useState('10')
+  const [splitMonth2, setSplitMonth2] = useState(8)
+  const [splitDays2, setSplitDays2] = useState('11')
 
   // ── 1. Fetch Department, Employee & Plan Data ──────────────────────────────
   const fetchPlannerData = async () => {
@@ -241,6 +250,62 @@ export const TeamLeavePlannerPage = () => {
     setHasUnsavedChanges(true)
     setEditingEmployeeNotes(null)
     toast.success(`Notes saved for ${editingEmployeeNotes.full_name}`)
+  }
+
+  // ── 3b. Quick-Populate Annual Leave Days for Employee ──────────────────────
+  const handleOpenPopulateModal = (emp) => {
+    const entitled = calculatePlannerAnnualEntitlement(emp, selectedYear)
+    setPopulatingEmployee(emp)
+    setPopulateMode('single')
+    setPopulateMonth(8) // default August
+    const half1 = Math.floor(entitled / 2)
+    const half2 = entitled - half1
+    setSplitMonth1(4) // default April
+    setSplitDays1(String(half1))
+    setSplitMonth2(8) // default August
+    setSplitDays2(String(half2))
+  }
+
+  const handleApplyPopulate = () => {
+    if (!populatingEmployee) return
+    const staffId = populatingEmployee.staff_id || populatingEmployee.full_name
+    const entitled = calculatePlannerAnnualEntitlement(populatingEmployee, selectedYear)
+    const currentPlan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '', totalPlannedDays: 0 }
+    
+    let newAlloc = {}
+    let newMonths = []
+
+    if (populateMode === 'single') {
+      newAlloc[populateMonth] = entitled
+      newMonths = [populateMonth]
+    } else {
+      const d1 = parseFloat(splitDays1) || 0
+      const d2 = parseFloat(splitDays2) || 0
+      if (d1 > 0) {
+        newAlloc[splitMonth1] = d1
+        newMonths.push(splitMonth1)
+      }
+      if (d2 > 0) {
+        newAlloc[splitMonth2] = (newAlloc[splitMonth2] || 0) + d2
+        if (!newMonths.includes(splitMonth2)) newMonths.push(splitMonth2)
+      }
+      newMonths.sort((a, b) => a - b)
+    }
+
+    const totalPlannedDays = Object.values(newAlloc).reduce((sum, d) => sum + Number(d || 0), 0)
+
+    setPlans(prev => ({
+      ...prev,
+      [staffId]: {
+        ...currentPlan,
+        selectedMonths: newMonths,
+        monthAllocations: newAlloc,
+        totalPlannedDays
+      }
+    }))
+    setHasUnsavedChanges(true)
+    setPopulatingEmployee(null)
+    toast.success(`Populated ${totalPlannedDays} planned leave days for ${populatingEmployee.full_name}! Remember to click "Save Plan"`)
   }
 
   // ── 4. Save Plan Changes to Supabase & Local Cache ─────────────────────────
@@ -625,7 +690,14 @@ export const TeamLeavePlannerPage = () => {
               <tbody className="divide-y divide-gray-100">
                 {filteredEmployees.map((emp) => {
                   const staffId = emp.staff_id || emp.full_name
-                  const entitled = calculateAnnualLeaveEntitlement(emp, selectedYear)
+                  const entitled = calculatePlannerAnnualEntitlement(emp, selectedYear)
+                  const isNonNative = emp.native_status?.toString().trim().toLowerCase() === 'non-native'
+                  const baseDays = isNonNative ? 24 : 21
+                  const tenureYears = getTenureYears(emp, selectedYear)
+                  let bonusDays = 0
+                  if (tenureYears === 3 || tenureYears === 4) bonusDays = 3
+                  else if (tenureYears >= 5) bonusDays = 4
+
                   const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '', totalPlannedDays: 0 }
                   const plannedDays = plan.totalPlannedDays || 0
                   const remaining = entitled - plannedDays
@@ -665,41 +737,55 @@ export const TeamLeavePlannerPage = () => {
                             </div>
                           </div>
 
-                          {/* Notes Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenNotesModal(emp)}
-                            className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
-                              plan.notes
-                                ? 'bg-amber-50 text-amber-700 border-amber-300'
-                                : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-700 hover:bg-gray-100'
-                            }`}
-                            title={plan.notes ? `Note: "${plan.notes}" (click to edit)` : 'Add schedule note'}
-                          >
-                            <MessageSquare size={12} />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Quick Populate Button */}
+                            {userCanEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPopulateModal(emp)}
+                                className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-[#006939] hover:bg-[#006939] hover:text-white transition-colors"
+                                title={`Quick-Populate full ${entitled} annual leave days for ${emp.full_name}`}
+                              >
+                                <Sparkles size={12} />
+                              </button>
+                            )}
+
+                            {/* Notes Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenNotesModal(emp)}
+                              className={`p-1.5 rounded-lg border transition-colors ${
+                                plan.notes
+                                  ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                  : 'bg-gray-50 text-gray-400 border-gray-200 hover:text-gray-700 hover:bg-gray-100'
+                              }`}
+                              title={plan.notes ? `Note: "${plan.notes}" (click to edit)` : 'Add schedule note'}
+                            >
+                              <MessageSquare size={12} />
+                            </button>
+                          </div>
                         </div>
                       </td>
 
                       {/* Entitled Days */}
                       <td className="py-2.5 px-2 text-center">
-                        <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg bg-gray-100 text-gray-800 font-black text-xs">
-                          {entitled}d
-                        </span>
-                        {(() => {
-                          const parsed = parseEngagementDate(emp.date_of_engagement)
-                          if (parsed && parsed.year === selectedYear) {
-                            return (
-                              <span 
-                                className="block text-[8px] font-bold text-blue-700 mt-0.5" 
-                                title={`Prorated from DOE ${emp.date_of_engagement}: ${12 - parsed.month + 1} months to year-end`}
-                              >
-                                Prorated
-                              </span>
-                            )
-                          }
-                          return null
-                        })()}
+                        <div className="inline-flex flex-col items-center justify-center">
+                          <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg bg-gray-100 text-gray-800 font-black text-xs">
+                            {entitled}d
+                          </span>
+                          {bonusDays > 0 ? (
+                            <span 
+                              className="block text-[8.5px] font-bold text-emerald-700 mt-0.5 leading-tight" 
+                              title={`${baseDays}d base + ${bonusDays}d anniversary bonus (${tenureYears} yrs service)`}
+                            >
+                              +{bonusDays}d bonus
+                            </span>
+                          ) : (
+                            <span className="block text-[8.5px] text-gray-400 mt-0.5 leading-tight">
+                              {isNonNative ? '24d non-native' : '21d native'}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 12 Interactive Month Days Input Cells */}
@@ -845,6 +931,188 @@ export const TeamLeavePlannerPage = () => {
                 className="px-4 py-2 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md"
               >
                 Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal for Quick-Populating Employee Annual Leave Days ── */}
+      {populatingEmployee && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-200">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-50 text-[#006939] border border-emerald-200">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-gray-900">
+                    Quick-Populate Leave Plan
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {populatingEmployee.full_name} ({selectedYear})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPopulatingEmployee(null)}
+                className="p-1.5 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Formula Summary Box */}
+            {(() => {
+              const entitled = calculatePlannerAnnualEntitlement(populatingEmployee, selectedYear)
+              const isNonNative = populatingEmployee.native_status?.toString().trim().toLowerCase() === 'non-native'
+              const baseDays = isNonNative ? 24 : 21
+              const tenure = getTenureYears(populatingEmployee, selectedYear)
+              let bonus = 0
+              if (tenure === 3 || tenure === 4) bonus = 3
+              else if (tenure >= 5) bonus = 4
+
+              return (
+                <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-700">Entitlement to Populate:</span>
+                    <span className="font-black text-base text-[#006939]">{entitled} Days</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600">
+                    • <strong>{baseDays} days base</strong> ({isNonNative ? 'Non-Native' : 'Native'})
+                    {bonus > 0 ? (
+                      <span className="text-emerald-700 font-bold block mt-0.5">
+                        • <strong>+{bonus} days anniversary bonus</strong> ({tenure} years of service)
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 block mt-0.5">
+                        • Standard statutory entitlement ({tenure} yrs service)
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )
+            })()}
+
+            {/* Distribution Mode */}
+            <div className="space-y-3 text-xs">
+              <label className="font-bold text-gray-700 block">
+                How would you like to assign the days?
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPopulateMode('single')}
+                  className={`p-2.5 rounded-xl border font-bold text-xs transition-all ${
+                    populateMode === 'single'
+                      ? 'bg-[#006939] text-white border-[#004D2A] shadow-sm'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  Single Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPopulateMode('split')}
+                  className={`p-2.5 rounded-xl border font-bold text-xs transition-all ${
+                    populateMode === 'split'
+                      ? 'bg-[#006939] text-white border-[#004D2A] shadow-sm'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  Split Across 2 Months
+                </button>
+              </div>
+
+              {populateMode === 'single' ? (
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">
+                    Select Target Month
+                  </label>
+                  <select
+                    value={populateMonth}
+                    onChange={(e) => setPopulateMonth(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white"
+                  >
+                    {MONTHS.map(m => (
+                      <option key={m.num} value={m.num}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Month 1</label>
+                      <select
+                        value={splitMonth1}
+                        onChange={(e) => setSplitMonth1(Number(e.target.value))}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white"
+                      >
+                        {MONTHS.map(m => (
+                          <option key={m.num} value={m.num}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Days</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="35"
+                        value={splitDays1}
+                        onChange={(e) => setSplitDays1(e.target.value)}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white text-center"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Month 2</label>
+                      <select
+                        value={splitMonth2}
+                        onChange={(e) => setSplitMonth2(Number(e.target.value))}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white"
+                      >
+                        {MONTHS.map(m => (
+                          <option key={m.num} value={m.num}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Days</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="35"
+                        value={splitDays2}
+                        onChange={(e) => setSplitDays2(e.target.value)}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white text-center"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setPopulatingEmployee(null)}
+                className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyPopulate}
+                className="px-5 py-2 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md flex items-center gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>Apply to Plan</span>
               </button>
             </div>
           </div>
