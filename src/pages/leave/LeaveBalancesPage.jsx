@@ -167,6 +167,10 @@ export const LeaveBalancesPage = () => {
             tenureYears: breakdown.tenureYears ?? null,
             bonusDays: breakdown.bonusDays ?? 0,
             baseDays: breakdown.baseDays ?? entitled,
+            accumulatedDays: isAnnual ? (breakdown.accumulatedDays ?? 0) : used,
+            monthsSpent: breakdown.monthsSpent ?? 0,
+            isProrated: isAnnual && (breakdown.isProrated ?? false),
+            monthsFromDoeToEndOfYear: breakdown.monthsFromDoeToEndOfYear ?? 12,
             breakdownText: breakdown.text ?? '',
             leaveTypeId: lt.id,
             leaveTypeName: lt.name,
@@ -267,6 +271,9 @@ export const LeaveBalancesPage = () => {
           'Tenure (Yrs)': row.tenureYears !== null && row.tenureYears !== undefined ? row.tenureYears : 'N/A',
           'Leave Category': row.leaveTypeName,
           'Entitled Days': row.entitledDays,
+          'Prorated': row.isProrated ? `Yes (${row.monthsFromDoeToEndOfYear} mos to year-end)` : 'No',
+          'Accumulated to Date': row.accumulatedDays,
+          'Months Spent': row.monthsSpent,
           'Bonus Days': row.bonusDays || 0,
           'Used Days': row.usedDays,
           'Remaining Days': row.remainingDays,
@@ -287,6 +294,9 @@ export const LeaveBalancesPage = () => {
         { wch: 14 }, // Tenure
         { wch: 20 }, // Leave Category
         { wch: 14 }, // Entitled Days
+        { wch: 20 }, // Prorated
+        { wch: 18 }, // Accumulated to Date
+        { wch: 14 }, // Months Spent
         { wch: 12 }, // Bonus Days
         { wch: 12 }, // Used Days
         { wch: 16 }, // Remaining Days
@@ -549,12 +559,25 @@ export const LeaveBalancesPage = () => {
                               style={{ width: `${pct}%` }}
                             />
                           </div>
-                          <div className="flex items-center justify-between text-[11px] text-gray-400">
+                          <div className="flex items-center justify-between text-[11px] text-gray-500 pt-0.5">
                             <span>{annual.usedDays} used of {annual.entitledDays} days</span>
-                            {annual.bonusDays > 0 && (
-                              <span className="text-emerald-700 font-bold">+{annual.bonusDays} bonus</span>
-                            )}
+                            <span 
+                              className="text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200" 
+                              title={`Accumulated to date: ${annual.accumulatedDays} days (${annual.monthsSpent} months spent in company)`}
+                            >
+                              {annual.accumulatedDays}d accumulated
+                            </span>
                           </div>
+                          {annual.bonusDays > 0 && (
+                            <p className="text-[10px] text-emerald-700 font-bold">
+                              +{annual.bonusDays} tenure anniversary bonus
+                            </p>
+                          )}
+                          {annual.isProrated && (
+                            <p className="text-[10px] text-blue-700 font-semibold bg-blue-50/60 px-2 py-0.5 rounded border border-blue-100">
+                              ℹ️ Prorated: {annual.entitledDays}d ({annual.monthsFromDoeToEndOfYear} mos from DOE to year-end)
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="p-3 bg-gray-50 rounded-xl text-center text-xs text-gray-400">
@@ -615,6 +638,7 @@ export const LeaveBalancesPage = () => {
                     <th className="py-3.5 px-6">Department</th>
                     <th className="py-3.5 px-6">Leave Category</th>
                     <th className="py-3.5 px-6">Entitled</th>
+                    <th className="py-3.5 px-6">Accumulated</th>
                     <th className="py-3.5 px-6">Used (Days)</th>
                     <th className="py-3.5 px-6">Available</th>
                     <th className="py-3.5 px-6 text-right">Utilization</th>
@@ -674,10 +698,28 @@ export const LeaveBalancesPage = () => {
                           {row.leaveTypeName}
                         </td>
                         <td className="py-3.5 px-6">
-                          <span className="font-bold text-gray-700">{row.entitledDays} days</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-gray-700">{row.entitledDays} days</span>
+                            {row.isProrated && (
+                              <span 
+                                className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"
+                                title={`Prorated from DOE: ${row.monthsFromDoeToEndOfYear} months to year-end`}
+                              >
+                                Prorated
+                              </span>
+                            )}
+                          </div>
                           {row.bonusDays > 0 && (
                             <p className="text-[10px] text-emerald-600 font-semibold">
                               +{row.bonusDays} tenure bonus
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-6">
+                          <span className="font-extrabold text-blue-800">{row.accumulatedDays} days</span>
+                          {row.monthsSpent > 0 && (
+                            <p className="text-[10px] text-gray-400 font-medium">
+                              {row.monthsSpent} mos spent
                             </p>
                           )}
                         </td>

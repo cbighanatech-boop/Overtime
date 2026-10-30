@@ -179,6 +179,10 @@ export const EmployeeLeaveBalancesPage = () => {
           pendingDays: pending,
           remainingDays: remaining,
           utilizationPct,
+          accumulatedDays: breakdown.accumulatedDays || 0,
+          monthsSpent: breakdown.monthsSpent || 0,
+          isProrated: breakdown.isProrated || false,
+          monthsFromDoeToEndOfYear: breakdown.monthsFromDoeToEndOfYear || 12,
           breakdownText: breakdown.text,
           bonusDays: breakdown.bonusDays || 0,
           baseDays: breakdown.baseDays || entitled,
@@ -210,6 +214,7 @@ export const EmployeeLeaveBalancesPage = () => {
   // (base 21 or 24 days + tenure anniversary bonus days).
   // Special statutory categories (e.g. 90 days maternity) are conditional benefits, NOT general entitlement days.
   const totalEntitled = annualLeaveBalance ? annualLeaveBalance.entitledDays : 0
+  const totalAccumulated = annualLeaveBalance ? annualLeaveBalance.accumulatedDays : 0
   const totalUsed = annualLeaveBalance ? annualLeaveBalance.usedDays : 0
   const totalPending = annualLeaveBalance ? annualLeaveBalance.pendingDays : 0
   const totalRemaining = annualLeaveBalance ? annualLeaveBalance.remainingDays : 0
@@ -453,13 +458,22 @@ export const EmployeeLeaveBalancesPage = () => {
                   <div className="p-2 bg-[#006939] text-white rounded-xl shrink-0 mt-0.5 shadow-sm">
                     <Sparkles size={16} />
                   </div>
-                  <div className="space-y-0.5 flex-1">
+                  <div className="space-y-1 flex-1">
                     <p className="font-bold text-[#006939] uppercase tracking-wider">
                       Statutory Annual Leave Formula Breakdown
                     </p>
                     <p className="text-gray-700 leading-relaxed">
                       <strong>Base Entitlement:</strong> {annualLeaveBalance.baseDays} days ({employee.native_status || 'Native'}).{' '}
-                      {annualLeaveBalance.bonusDays > 0 ? (
+                      {annualLeaveBalance.isProrated ? (
+                        <span className="text-blue-900 font-semibold block mt-1.5 bg-blue-50/80 p-2.5 rounded-xl border border-blue-200 space-y-0.5">
+                          <span className="block">
+                            <strong>Prorated First Year Entitlement:</strong> {annualLeaveBalance.entitledDays} days ({annualLeaveBalance.baseDays}/12 × {annualLeaveBalance.monthsFromDoeToEndOfYear} months from DOE {employee.date_of_engagement} to Dec 31, {selectedYear}).
+                          </span>
+                          <span className="block text-blue-800">
+                            <strong>Accumulated Leave to Date:</strong> {annualLeaveBalance.accumulatedDays} days ({annualLeaveBalance.baseDays}/12 × {annualLeaveBalance.monthsSpent} months spent in the company to date).
+                          </span>
+                        </span>
+                      ) : annualLeaveBalance.bonusDays > 0 ? (
                         <span className="text-emerald-800 font-semibold">
                           <strong>Tenure Bonus:</strong> +{annualLeaveBalance.bonusDays} extra days awarded for {tenureYears} years of service (DOE: {employee.date_of_engagement}).
                         </span>
@@ -478,7 +492,7 @@ export const EmployeeLeaveBalancesPage = () => {
           {/* ══════════════════════════════════════════════════════════════════
                2. SUMMARY KPI METRIC TILES
           ══════════════════════════════════════════════════════════════════ */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
                 Total Entitled ({selectedYear})
@@ -487,7 +501,23 @@ export const EmployeeLeaveBalancesPage = () => {
                 {totalEntitled} <span className="text-xs font-semibold text-gray-400">days</span>
               </p>
               <p className="text-[11px] text-gray-500 mt-1">
-                Annual Leave {annualLeaveBalance?.bonusDays > 0 ? `(incl. +${annualLeaveBalance.bonusDays} anniversary)` : '(statutory)'}
+                {annualLeaveBalance?.isProrated
+                  ? `Prorated from DOE (${annualLeaveBalance.monthsFromDoeToEndOfYear} mos)`
+                  : annualLeaveBalance?.bonusDays > 0
+                  ? `Annual Leave (incl. +${annualLeaveBalance.bonusDays} anniversary)`
+                  : 'Annual Leave (statutory)'}
+              </p>
+            </div>
+
+            <div className="bg-white border border-blue-200 rounded-2xl p-5 shadow-sm bg-gradient-to-br from-blue-50/50 to-white">
+              <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider block">
+                Accumulated to Date
+              </span>
+              <p className="text-3xl font-black text-blue-900 mt-1">
+                {totalAccumulated} <span className="text-xs font-semibold text-blue-400">days</span>
+              </p>
+              <p className="text-[11px] text-blue-600 mt-1 font-medium">
+                {annualLeaveBalance?.monthsSpent !== undefined ? `${annualLeaveBalance.monthsSpent} months spent in ${selectedYear}` : 'Earned to date'}
               </p>
             </div>
 

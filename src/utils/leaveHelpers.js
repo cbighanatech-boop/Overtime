@@ -135,15 +135,76 @@ export const isEligibleForLeave = (employee) => {
 }
 
 /**
+ * Parse and normalize Date of Engagement (DOE) supporting ISO, slash (M/D/YYYY or D/M/YYYY),
+ * and Date objects into year, month (1-12), day, and normalized YYYY-MM-DD string.
+ */
+export const parseEngagementDate = (val) => {
+  if (!val) return null
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return {
+      year: val.getFullYear(),
+      month: val.getMonth() + 1,
+      day: val.getDate(),
+      dateStr: val.toISOString().slice(0, 10)
+    }
+  }
+  const str = String(val).trim()
+  if (!str) return null
+  
+  // YYYY-MM-DD
+  const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10)
+    const month = parseInt(isoMatch[2], 10)
+    const day = parseInt(isoMatch[3], 10)
+    return {
+      year,
+      month,
+      day,
+      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  // M/D/YYYY or MM/DD/YYYY or D/M/YYYY
+  const slashMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/)
+  if (slashMatch) {
+    const p1 = parseInt(slashMatch[1], 10)
+    const p2 = parseInt(slashMatch[2], 10)
+    const year = parseInt(slashMatch[3], 10)
+    let month = p1
+    let day = p2
+    if (p1 > 12) {
+      day = p1
+      month = p2
+    }
+    return {
+      year,
+      month,
+      day,
+      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  const d = new Date(str)
+  if (!isNaN(d.getTime())) {
+    return {
+      year: d.getFullYear(),
+      month: d.getMonth() + 1,
+      day: d.getDate(),
+      dateStr: d.toISOString().slice(0, 10)
+    }
+  }
+  return null
+}
+
+/**
  * Calculate tenure in years from Date of Engagement (DOE) relative to a given year.
  */
 export const getTenureYears = (employee, forYear = new Date().getFullYear()) => {
-  const doe = employee?.date_of_engagement || employee?.doe
-  if (!doe) return 0
-  const doeDate = new Date(doe)
-  if (isNaN(doeDate.getTime())) return 0
-  const doeYear = doeDate.getFullYear()
-  return Math.max(0, forYear - doeYear)
+  const rawDoe = employee?.date_of_engagement || employee?.doe
+  const parsed = parseEngagementDate(rawDoe)
+  if (!parsed) return 0
+  return Math.max(0, forYear - parsed.year)
 }
 
 /**
@@ -151,8 +212,13 @@ export const getTenureYears = (employee, forYear = new Date().getFullYear()) => 
  * 1. Base entitlement:
  *    - Native: 21 days
  *    - Non-Native: 24 days
- * 2. DOE Tenure Bonus:
- *    - In the year where the employee is 3 or 4 years: +3 days
+ * 2. Prorated Entitlement when DOE is in the calculation year:
+ *    - Rate: (baseDays / 12)
+ *    - Multiplied by number of months from DOE to the end of the year: (12 - doeMonth + 1)
+ *    - E.g. If DOE = 9/1/2026 (September), months to end of year = 4 (Sep, Oct, Nov, Dec).
+ *      Entitled = (21/12) * 4 = 7 days.
+ * 3. Tenure Bonus for employees engaged before the calculation year:
+ *    - In the year where the employee has 3 or 4 years of service: +3 days
  *    - On the 5th anniversary year and onwards (>= 5 years): +4 days
  *    - Applicable to both Native and Non-Native employees
  * 
@@ -167,24 +233,182 @@ export const calculateAnnualLeaveEntitlement = (employee, forYear = new Date().g
   const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
   const baseDays = isNonNative ? 24 : 21
 
-  // Check Date of Engagement (DOE)
-  const tenureYears = getTenureYears(employee, forYear)
+  const rawDoe = employee.date_of_engagement || employee.doe
+  const parsedDoe = parseEngagementDate(rawDoe)
 
-  let bonusDays = 0
-  if (tenureYears === 3 || tenureYears === 4) {
-    bonusDays = 3
-  } else if (tenureYears >= 5) {
-    bonusDays = 4
+  if (parsedDoe) {
+    const { year: doeYear, month: doeMonth } = parsedDoe
+
+    // Case 1: Employee joined in the calculation year -> Prorated to end of year
+    if (doeYear === forYear) {
+      const monthsFromDoeToEndOfYear = Math.max(0, 12 - doeMonth + 1)
+      const proratedDays = (baseDays / 12) * monthsFromDoeToEndOfYear
+      return Math.round(proratedDays * 100) / 100
+    }
+
+    // Case 2: Employee not yet engaged in calculation year
+    if (doeYear > forYear) {
+      return 0
+    }
+
+    // Case 3: Employee engaged before calculation year -> Full base + tenure bonus
+    const tenureYears = Math.max(0, forYear - doeYear)
+    let bonusDays = 0
+    if (tenureYears === 3 || tenureYears === 4) {
+      bonusDays = 3
+    } else if (tenureYears >= 5) {
+      bonusDays = 4
+    }
+    return baseDays + bonusDays
   }
 
-  return baseDays + bonusDays
+  return baseDays
+}
+
+/**
+ * Calculate Accumulated (Accrued) Leave Balance to date according to CBI policy:
+ * - Rate: (baseDays / 12) per month
+ * - For an employee joined in the current year:
+ *   multiplied by the number of months spent in the company from DOE up to current date.
+ *   E.g. If DOE = 9/1/2026, and current month is October (month 10):
+ *   months spent = (10 - 9 + 1) = 2 months.
+ *   accumulated = (21/12) * 2 = 3.5 days.
+ * - For an employee joined prior to the current year:
+ *   multiplied by months elapsed in the year so far (capped at full year entitlement).
+ * 
+ * @param {Object} employee - Employee profile
+ * @param {number} forYear - Calculation year
+ * @param {Date} asOfDate - Date as of which to calculate accrual (defaults to today)
+ */
+export const calculateAccumulatedLeave = (
+  employee,
+  forYear = new Date().getFullYear(),
+  asOfDate = new Date()
+) => {
+  if (!employee) return { accumulatedDays: 0, monthsSpent: 0, ratePerMonth: 1.75, isProrated: false, monthsFromDoeToEndOfYear: 12 }
+
+  const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
+  const baseDays = isNonNative ? 24 : 21
+  const annualEntitled = calculateAnnualLeaveEntitlement(employee, forYear)
+  const monthlyRate = baseDays / 12
+
+  const rawDoe = employee.date_of_engagement || employee.doe
+  const parsedDoe = parseEngagementDate(rawDoe)
+
+  const asOfYear = asOfDate.getFullYear()
+  const asOfMonth = asOfDate.getMonth() + 1
+
+  // Past year: full entitlement for that year was earned
+  if (forYear < asOfYear) {
+    const isProrated = parsedDoe?.year === forYear
+    const months = isProrated ? Math.max(0, 12 - parsedDoe.month + 1) : 12
+    return {
+      accumulatedDays: annualEntitled,
+      monthsSpent: months,
+      ratePerMonth: monthlyRate,
+      isProrated,
+      monthsFromDoeToEndOfYear: months
+    }
+  }
+
+  // Future year: not accumulated yet
+  if (forYear > asOfYear) {
+    return {
+      accumulatedDays: 0,
+      monthsSpent: 0,
+      ratePerMonth: monthlyRate,
+      isProrated: parsedDoe?.year === forYear,
+      monthsFromDoeToEndOfYear: parsedDoe?.year === forYear ? Math.max(0, 12 - parsedDoe.month + 1) : 12
+    }
+  }
+
+  // forYear === asOfYear (current calendar year)
+  if (!parsedDoe) {
+    const monthsSpent = asOfMonth
+    const accumulatedDays = Math.min(
+      annualEntitled,
+      Math.round((monthlyRate * monthsSpent) * 100) / 100
+    )
+    return {
+      accumulatedDays,
+      monthsSpent,
+      ratePerMonth: monthlyRate,
+      isProrated: false,
+      monthsFromDoeToEndOfYear: 12
+    }
+  }
+
+  const { year: doeYear, month: doeMonth } = parsedDoe
+
+  if (doeYear > forYear) {
+    return {
+      accumulatedDays: 0,
+      monthsSpent: 0,
+      ratePerMonth: monthlyRate,
+      isProrated: false,
+      monthsFromDoeToEndOfYear: 0
+    }
+  }
+
+  let monthsSpent = 0
+  let isProrated = false
+  let monthsFromDoeToEndOfYear = 12
+
+  if (doeYear === forYear) {
+    isProrated = true
+    monthsFromDoeToEndOfYear = Math.max(0, 12 - doeMonth + 1)
+    if (asOfMonth < doeMonth) {
+      monthsSpent = 0
+    } else {
+      monthsSpent = asOfMonth - doeMonth + 1
+    }
+  } else {
+    monthsSpent = asOfMonth
+  }
+
+  const accumulatedDays = Math.min(
+    annualEntitled,
+    Math.round((monthlyRate * monthsSpent) * 100) / 100
+  )
+
+  return {
+    accumulatedDays,
+    monthsSpent,
+    ratePerMonth: monthlyRate,
+    isProrated,
+    monthsFromDoeToEndOfYear
+  }
+}
+
+/**
+ * Rule: Casual leave can only be utilized when the employee
+ * has utilized all of his/her annual leave entitlement for the year.
+ *
+ * @param {number} annualEntitled - Total annual leave days entitled for the year
+ * @param {number} annualUsed - Total approved annual leave days used in the year
+ * @returns {{ canUtilize: boolean, remainingAnnualDays: number, reason: string }}
+ */
+export const canUtilizeCasualLeave = (annualEntitled, annualUsed) => {
+  const remainingAnnual = Math.max(0, Number(annualEntitled || 0) - Number(annualUsed || 0))
+  if (remainingAnnual > 0) {
+    return {
+      canUtilize: false,
+      remainingAnnualDays: remainingAnnual,
+      reason: `Casual leave can only be utilized when all Annual Leave entitlement for the year has been exhausted. Employee still has ${remainingAnnual} day(s) of Annual Leave remaining.`
+    }
+  }
+  return {
+    canUtilize: true,
+    remainingAnnualDays: 0,
+    reason: ''
+  }
 }
 
 /**
  * Get entitlement breakdown explanation for tooltip / display
  */
 export const getEntitlementBreakdown = (employee, leaveType, forYear = new Date().getFullYear()) => {
-  if (!leaveType) return { entitled: 0, text: '' }
+  if (!leaveType) return { entitled: 0, text: '', accumulatedDays: 0 }
 
   const typeName = (leaveType.name || '').trim().toLowerCase()
   if (typeName === 'annual leave') {
@@ -192,13 +416,19 @@ export const getEntitlementBreakdown = (employee, leaveType, forYear = new Date(
     const baseDays = isNonNative ? 24 : 21
     const tenureYears = getTenureYears(employee, forYear)
     const total = calculateAnnualLeaveEntitlement(employee, forYear)
-    const bonusDays = total - baseDays
+    const bonusDays = Math.max(0, total - baseDays)
+    const acc = calculateAccumulatedLeave(employee, forYear)
 
-    let note = `${baseDays} days base (${isNonNative ? 'Non-Native' : 'Native'})`
-    if (bonusDays > 0) {
-      note += ` + ${bonusDays} days tenure bonus (${tenureYears} yrs of service)`
-    } else if (employee?.date_of_engagement) {
-      note += ` (${tenureYears} yrs service)`
+    let note = ''
+    if (acc.isProrated) {
+      note = `Prorated: ${total} days (${baseDays}/12 × ${acc.monthsFromDoeToEndOfYear} mos from DOE to year-end)`
+    } else {
+      note = `${baseDays} days base (${isNonNative ? 'Non-Native' : 'Native'})`
+      if (bonusDays > 0) {
+        note += ` + ${bonusDays} days tenure bonus (${tenureYears} yrs of service)`
+      } else if (employee?.date_of_engagement) {
+        note += ` (${tenureYears} yrs service)`
+      }
     }
 
     return {
@@ -207,6 +437,11 @@ export const getEntitlementBreakdown = (employee, leaveType, forYear = new Date(
       bonusDays,
       tenureYears,
       isNonNative,
+      isProrated: acc.isProrated,
+      monthsFromDoeToEndOfYear: acc.monthsFromDoeToEndOfYear,
+      accumulatedDays: acc.accumulatedDays,
+      monthsSpent: acc.monthsSpent,
+      ratePerMonth: acc.ratePerMonth,
       text: note
     }
   }
@@ -215,6 +450,7 @@ export const getEntitlementBreakdown = (employee, leaveType, forYear = new Date(
     entitled: Number(leaveType.default_days || 0),
     baseDays: Number(leaveType.default_days || 0),
     bonusDays: 0,
+    accumulatedDays: Number(leaveType.default_days || 0),
     text: `${leaveType.default_days || 0} days statutory`
   }
 }

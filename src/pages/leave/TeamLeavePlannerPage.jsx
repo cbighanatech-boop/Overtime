@@ -7,6 +7,7 @@ import {
   isEligibleForLeave, 
   calculateAnnualLeaveEntitlement, 
   getTenureYears, 
+  parseEngagementDate,
   LEAVE_YEARS 
 } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
@@ -685,6 +686,20 @@ export const TeamLeavePlannerPage = () => {
                         <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg bg-gray-100 text-gray-800 font-black text-xs">
                           {entitled}d
                         </span>
+                        {(() => {
+                          const parsed = parseEngagementDate(emp.date_of_engagement)
+                          if (parsed && parsed.year === selectedYear) {
+                            return (
+                              <span 
+                                className="block text-[8px] font-bold text-blue-700 mt-0.5" 
+                                title={`Prorated from DOE ${emp.date_of_engagement}: ${12 - parsed.month + 1} months to year-end`}
+                              >
+                                Prorated
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
                       </td>
 
                       {/* 12 Interactive Month Days Input Cells */}

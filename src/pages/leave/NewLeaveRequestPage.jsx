@@ -3,7 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canApplyLeave, calculateWorkingDays, getHolidaysInRange, isEligibleForLeave, getEntitlementBreakdown } from '../../utils/leaveHelpers'
+import { 
+  canApplyLeave, 
+  calculateWorkingDays, 
+  getHolidaysInRange, 
+  isEligibleForLeave, 
+  getEntitlementBreakdown,
+  canUtilizeCasualLeave 
+} from '../../utils/leaveHelpers'
 import { notifySupervisorsOfLeaveRequest } from '../../utils/leaveNotificationService'
 import { 
   ArrowLeft, 
@@ -20,7 +27,8 @@ import {
   Info,
   CalendarCheck,
   Mail,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, addDays } from 'date-fns'
@@ -53,6 +61,13 @@ export const NewLeaveRequestPage = () => {
   // Balance lookup for the selected employee & leave type
   const [balanceInfo, setBalanceInfo] = useState(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
+  const [annualStatus, setAnnualStatus] = useState({
+    entitled: 0,
+    approved: 0,
+    remaining: 0,
+    canUtilizeCasual: true,
+    reason: ''
+  })
 
   // Load active employees (excluding Abanach), leave types, and registered holidays
   useEffect(() => {
@@ -142,11 +157,12 @@ export const NewLeaveRequestPage = () => {
   // Detect holidays falling within the selected period
   const holidaysInRange = getHolidaysInRange(startDate, endDate, holidays)
 
-  // Lookup leave balance when employee or leave type changes
+  // Lookup leave balance and annual leave status when employee, leave type, or dates change
   useEffect(() => {
     const fetchBalance = async () => {
-      if (!selectedEmployeeId || !selectedLeaveTypeId) {
+      if (!selectedEmployeeId) {
         setBalanceInfo(null)
+        setAnnualStatus({ entitled: 0, approved: 0, remaining: 0, canUtilizeCasual: true, reason: '' })
         return
       }
 
@@ -158,51 +174,85 @@ export const NewLeaveRequestPage = () => {
         const staffIdentifier = emp.staff_id || emp.full_name
         const currentYear = new Date(startDate || new Date()).getFullYear()
 
-        // 1. Check existing balance record in leave_balances
-        const { data: balData } = await supabase
+        // 1. Fetch all leave requests for this employee in currentYear
+        const { data: yearRequests } = await supabase
+          .from('leave_requests')
+          .select('total_days, status, leave_type_id')
+          .eq('employee_id', staffIdentifier)
+          .gte('start_date', `${currentYear}-01-01`)
+          .lte('start_date', `${currentYear}-12-31`)
+          .in('status', ['Approved', 'Pending'])
+
+        // 2. Fetch custom balances in leave_balances for this employee and currentYear
+        const { data: userCustomBals } = await supabase
           .from('leave_balances')
           .select('*')
           .eq('employee_id', staffIdentifier)
-          .eq('leave_type_id', selectedLeaveTypeId)
           .eq('year', currentYear)
-          .maybeSingle()
 
-        // 2. Get leave type default or dynamic calculation for Annual Leave
-        const chosenType = leaveTypes.find(lt => lt.id === selectedLeaveTypeId)
-        const breakdown = getEntitlementBreakdown(emp, chosenType, currentYear)
-        const defaultDays = breakdown.entitled
+        // 3. Compute Annual Leave entitlement & remaining (for Casual Leave rule & preview)
+        const annualType = leaveTypes.find(lt => (lt.name || '').trim().toLowerCase() === 'annual leave')
+        const annualBreakdown = annualType ? getEntitlementBreakdown(emp, annualType, currentYear) : { entitled: 21 }
+        const annualCustom = (userCustomBals || []).find(b => b.leave_type_id === annualType?.id)
+        const annualEntitled = annualCustom && annualCustom.entitled_days !== null && annualCustom.entitled_days !== undefined
+          ? Number(annualCustom.entitled_days)
+          : annualBreakdown.entitled
 
-        // 3. Count currently approved or pending days this year
-        const { data: takenRequests } = await supabase
-          .from('leave_requests')
-          .select('total_days, status')
-          .eq('employee_id', staffIdentifier)
-          .eq('leave_type_id', selectedLeaveTypeId)
-          .in('status', ['Approved', 'Pending'])
-
-        const approvedDays = (takenRequests || [])
-          .filter(r => r.status === 'Approved')
+        const approvedAnnualDays = (yearRequests || [])
+          .filter(r => r.leave_type_id === annualType?.id && r.status === 'Approved')
           .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
 
-        const pendingDays = (takenRequests || [])
-          .filter(r => r.status === 'Pending')
-          .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+        const annualRemaining = Math.max(0, annualEntitled - approvedAnnualDays)
+        const casualEligibility = canUtilizeCasualLeave(annualEntitled, approvedAnnualDays)
 
-        const entitled = balData && balData.entitled_days !== null && balData.entitled_days !== undefined
-          ? Number(balData.entitled_days)
-          : defaultDays
-        const remaining = Math.max(0, entitled - approvedDays)
-
-        setBalanceInfo({
-          entitled,
-          approvedDays,
-          pendingDays,
-          remaining,
-          breakdownText: breakdown.text,
-          bonusDays: breakdown.bonusDays,
-          baseDays: breakdown.baseDays,
-          isAnnual: (chosenType?.name || '').trim().toLowerCase() === 'annual leave'
+        setAnnualStatus({
+          entitled: annualEntitled,
+          approved: approvedAnnualDays,
+          remaining: annualRemaining,
+          canUtilizeCasual: casualEligibility.canUtilize,
+          reason: casualEligibility.reason
         })
+
+        // 4. Compute balance for the currently selected leave type
+        if (selectedLeaveTypeId) {
+          const chosenType = leaveTypes.find(lt => lt.id === selectedLeaveTypeId)
+          const breakdown = getEntitlementBreakdown(emp, chosenType, currentYear)
+          const typeCustom = (userCustomBals || []).find(b => b.leave_type_id === selectedLeaveTypeId)
+
+          const entitled = typeCustom && typeCustom.entitled_days !== null && typeCustom.entitled_days !== undefined
+            ? Number(typeCustom.entitled_days)
+            : breakdown.entitled
+
+          const approvedDays = (yearRequests || [])
+            .filter(r => r.leave_type_id === selectedLeaveTypeId && r.status === 'Approved')
+            .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+
+          const pendingDays = (yearRequests || [])
+            .filter(r => r.leave_type_id === selectedLeaveTypeId && r.status === 'Pending')
+            .reduce((sum, r) => sum + Number(r.total_days || 0), 0)
+
+          const remaining = Math.max(0, entitled - approvedDays)
+          const isAnnual = (chosenType?.name || '').trim().toLowerCase() === 'annual leave'
+          const isCasual = (chosenType?.name || '').trim().toLowerCase() === 'casual leave'
+
+          setBalanceInfo({
+            entitled,
+            approvedDays,
+            pendingDays,
+            remaining,
+            breakdownText: breakdown.text,
+            bonusDays: breakdown.bonusDays,
+            baseDays: breakdown.baseDays,
+            accumulatedDays: breakdown.accumulatedDays ?? 0,
+            monthsSpent: breakdown.monthsSpent ?? 0,
+            isProrated: breakdown.isProrated ?? false,
+            monthsFromDoeToEndOfYear: breakdown.monthsFromDoeToEndOfYear ?? 12,
+            isAnnual,
+            isCasual
+          })
+        } else {
+          setBalanceInfo(null)
+        }
       } catch (err) {
         console.warn('Balance lookup issue:', err.message)
       } finally {
@@ -265,6 +315,17 @@ export const NewLeaveRequestPage = () => {
     }
 
     const selectedType = leaveTypes.find(lt => lt.id === selectedLeaveTypeId)
+    const isCasual = (selectedType?.name || '').trim().toLowerCase() === 'casual leave'
+    const requestYear = new Date(startDate).getFullYear()
+
+    // RULE: Casual Leave can ONLY be utilized when the employee has utilized all of their annual leave entitlement for the year.
+    if (isCasual && annualStatus.remaining > 0) {
+      toast.error(
+        `Casual Leave restriction: Casual leave can only be utilized after all Annual Leave entitlement for the year has been exhausted. ${employeeObj.full_name} still has ${annualStatus.remaining} day(s) of Annual Leave remaining for ${requestYear}.`,
+        { duration: 6500 }
+      )
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -459,16 +520,38 @@ export const NewLeaveRequestPage = () => {
                   className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] bg-white font-medium text-gray-800"
                 >
                   <option value="">-- Choose Leave Type --</option>
-                  {leaveTypes.map(lt => (
-                    <option key={lt.id} value={lt.id}>
-                      {lt.name} ({lt.default_days} days/year)
-                    </option>
-                  ))}
+                  {leaveTypes.map(lt => {
+                    const isThisCasual = (lt.name || '').trim().toLowerCase() === 'casual leave'
+                    const isBlocked = isThisCasual && annualStatus.remaining > 0
+                    return (
+                      <option key={lt.id} value={lt.id}>
+                        {lt.name} ({lt.default_days} days/year){isBlocked ? ` — ⚠️ Annual Leave must be exhausted first (${annualStatus.remaining}d left)` : ''}
+                      </option>
+                    )
+                  })}
                 </select>
                 {selectedType?.description && (
                   <p className="text-[11px] text-gray-500 mt-1 italic">
                     {selectedType.description}
                   </p>
+                )}
+
+                {/* Casual Leave Restriction Warning Alert */}
+                {(selectedType?.name || '').trim().toLowerCase() === 'casual leave' && annualStatus.remaining > 0 && (
+                  <div className="mt-3 p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5 text-xs">
+                    <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-extrabold uppercase tracking-wider text-amber-900">
+                        Casual Leave Restriction
+                      </p>
+                      <p className="text-amber-800 leading-relaxed">
+                        Casual leave can only be utilized when the employee has utilized all of their annual leave entitlement for the year.
+                        {selectedEmployee && (
+                          <> <strong>{selectedEmployee.full_name}</strong> currently has <strong>{annualStatus.remaining} day(s)</strong> of Annual Leave remaining for {new Date(startDate || new Date()).getFullYear()}.</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -476,25 +559,44 @@ export const NewLeaveRequestPage = () => {
               <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Annual Entitlement
+                    {balanceInfo?.isAnnual ? 'Annual Leave Entitlement & Accrual' : 'Category Entitlement'}
                   </span>
                   {loadingBalance && <Loader2 size={12} className="animate-spin text-[#006939]" />}
                 </div>
 
                 {balanceInfo ? (
                   <>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2 bg-white rounded-lg border border-gray-100">
+                    <div className={`mt-2 grid ${balanceInfo.isAnnual ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-2 text-center`}>
+                      <div className="p-2 bg-white rounded-lg border border-gray-100 flex flex-col justify-between">
                         <p className="text-[10px] text-gray-400 font-bold uppercase">Entitled</p>
                         <p className="text-base font-black text-gray-800 mt-0.5">{balanceInfo.entitled}</p>
+                        {balanceInfo.isProrated ? (
+                          <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200 mt-0.5">
+                            Prorated
+                          </span>
+                        ) : <span className="text-[9px] text-gray-400">Annual</span>}
                       </div>
-                      <div className="p-2 bg-white rounded-lg border border-gray-100">
+
+                      {balanceInfo.isAnnual && (
+                        <div className="p-2 bg-blue-50/60 rounded-lg border border-blue-200 flex flex-col justify-between">
+                          <p className="text-[10px] text-blue-800 font-bold uppercase">Accumulated</p>
+                          <p className="text-base font-black text-blue-900 mt-0.5">{balanceInfo.accumulatedDays}</p>
+                          <span className="text-[9px] text-blue-600 font-semibold mt-0.5">
+                            To Date ({balanceInfo.monthsSpent} mos)
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="p-2 bg-white rounded-lg border border-gray-100 flex flex-col justify-between">
                         <p className="text-[10px] text-gray-400 font-bold uppercase">Approved</p>
                         <p className="text-base font-black text-emerald-700 mt-0.5">{balanceInfo.approvedDays}</p>
+                        <span className="text-[9px] text-gray-400 mt-0.5">Used</span>
                       </div>
-                      <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+
+                      <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200 flex flex-col justify-between">
                         <p className="text-[10px] text-emerald-800 font-bold uppercase">Available</p>
                         <p className="text-base font-black text-[#006939] mt-0.5">{balanceInfo.remaining}</p>
+                        <span className="text-[9px] text-emerald-700 font-semibold mt-0.5">Remaining</span>
                       </div>
                     </div>
                     {balanceInfo.breakdownText && (
@@ -686,23 +788,40 @@ export const NewLeaveRequestPage = () => {
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Sending Application & Email...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save size={16} />
-                    <span>Submit & Notify Supervisor</span>
-                  </>
-                )}
-              </button>
+              {(() => {
+                const isCasualSelected = (selectedType?.name || '').trim().toLowerCase() === 'casual leave'
+                const casualBlocked = isCasualSelected && annualStatus.remaining > 0
+
+                return (
+                  <button
+                    type="submit"
+                    disabled={submitting || casualBlocked}
+                    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] ${
+                      casualBlocked
+                        ? 'bg-amber-600 hover:bg-amber-600 cursor-not-allowed opacity-90'
+                        : 'bg-[#006939] hover:bg-[#004D2A] disabled:opacity-50'
+                    }`}
+                    title={casualBlocked ? `Casual leave can only be utilized once all ${annualStatus.remaining} remaining Annual Leave days are exhausted` : ''}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Sending Application & Email...</span>
+                      </>
+                    ) : casualBlocked ? (
+                      <>
+                        <AlertTriangle size={16} />
+                        <span>Casual Leave Blocked ({annualStatus.remaining}d Annual Leave Left)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        <span>Submit & Notify Supervisor</span>
+                      </>
+                    )}
+                  </button>
+                )
+              })()}
             </div>
           </div>
 
