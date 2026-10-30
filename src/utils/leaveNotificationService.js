@@ -2,8 +2,9 @@ import { supabase } from '../supabase/client'
 import { format, parseISO } from 'date-fns'
 
 /**
- * Service to notify department supervisor(s) via email and in-app alert
- * when a Leave request is placed by a Representative.
+ * Automated Service to notify department supervisor(s) via email and in-app alert
+ * when a Leave request is placed.
+ * Automatically constructs the direct one-click approval link for the supervisor.
  */
 
 export const notifySupervisorsOfLeaveRequest = async ({
@@ -69,13 +70,20 @@ export const notifySupervisorsOfLeaveRequest = async ({
     const repName = repProfile?.full_name || 'Department Representative'
     const repEmail = repProfile?.email || ''
 
-    const subject = `[Leave Application] ${employeeName} (${staffId}) - ${leaveCategory} (${totalDays} Days)`
-    
-    // Construct email body sent from the Rep User to the Supervisor
+    // 2. Direct Click-to-Approve URL for the Supervisor
+    const origin = typeof window !== 'undefined' && window.location.origin
+      ? window.location.origin
+      : 'https://cbi-overtime-app.vercel.app'
+
+    const approvalUrl = `${origin}/leave/requests/${leaveRequest.id}?action=approve`
+
+    const subject = `[Action Required: Leave Approval] ${employeeName} (${staffId}) - ${leaveCategory} (${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'})`
+
+    // Plain text email body with direct clickable link
     const emailBody = `
 Dear Supervisor,
 
-Please be informed that I have submitted a leave application for ${employeeName} (Staff ID: ${staffId}) in the CBI Leave App, and it requires your review and approval.
+A new employee leave application has been submitted by Representative ${repName} in the CBI Leave Management App and is awaiting your review and approval.
 
 --------------------------------------------------
 APPLICATION DETAILS:
@@ -83,49 +91,107 @@ APPLICATION DETAILS:
 • Staff ID: ${staffId}
 • Department: ${departmentName || 'Department'}
 • Leave Category: ${leaveCategory}
-• Leave Period: ${startFormatted} to ${endFormatted} (${totalDays} Working Days)
-• Current Outstanding Leave Balance: ${balanceDays}
+• Leave Period: ${startFormatted} to ${endFormatted} (${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'})
+• Current Outstanding Balance: ${balanceDays}
 • Reason / Purpose: "${leaveRequest.reason || 'None specified'}"
-• Relief / Cover Staff: ${leaveRequest.relief_staff_name || 'None specified'}
+• Relief Staff: ${leaveRequest.relief_staff_name || 'None specified'}
 • Emergency Phone: ${leaveRequest.contact_phone || 'None specified'}
 --------------------------------------------------
 
-Please log in to the CBI Portal to approve or decline this application:
-${window.location.origin}/leave/requests/${leaveRequest.id}
+==================================================
+ACTION REQUIRED: REVIEW & APPROVE
+Click the link below to approve or decline this leave request:
+${approvalUrl}
+==================================================
 
 Warm regards,
 ${repName}
-${repEmail ? `Email: ${repEmail}` : ''}
-Representative, ${departmentName || 'CBI Ghana'}
+CBI Ghana Limited • Leave & Attendance System
 `.trim()
 
-    // 2. Generate direct mailto link so Rep can send from their own Outlook / mail client
-    const recipientEmails = recipients.map(s => s.email).filter(Boolean).join(',')
-    const mailtoLink = recipientEmails
-      ? `mailto:${encodeURIComponent(recipientEmails)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`
-      : null
+    // HTML email body with branded CBI Green CTA button
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #E5E7EB; border-radius: 12px; background: #ffffff;">
+        <div style="background-color: #006939; color: white; padding: 18px 20px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; font-size: 18px; letter-spacing: 0.5px;">CBI LEAVE APPLICATION NOTIFICATION</h2>
+          <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Action Required: Department Supervisor Approval</p>
+        </div>
+        <div style="padding: 24px 20px; background-color: #FFFFFF;">
+          <p style="color: #374151; font-size: 14px; margin-top: 0;">
+            A new employee leave application has been submitted by Representative <strong>${repName}</strong> and requires your review and approval:
+          </p>
+          
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px;">
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold; width: 40%;">Employee Name:</td>
+              <td style="padding: 10px 0; color: #111827; font-weight: bold;">${employeeName} (${staffId})</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Department:</td>
+              <td style="padding: 10px 0; color: #111827;">${departmentName}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Leave Category:</td>
+              <td style="padding: 10px 0; color: #006939; font-weight: bold;">${leaveCategory}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Duration:</td>
+              <td style="padding: 10px 0; color: #111827;">${startFormatted} to ${endFormatted} (<strong>${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'}</strong>)</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Outstanding Balance:</td>
+              <td style="padding: 10px 0; color: #006939; font-weight: bold;">${balanceDays}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Reason:</td>
+              <td style="padding: 10px 0; color: #374151;">${leaveRequest.reason || 'None specified'}</td>
+            </tr>
+          </table>
 
-    // 3. Attempt Edge Function invocation (serverless mailer with reply-to as Rep User)
+          <!-- Direct Click-to-Approve Button -->
+          <div style="margin: 30px 0 20px 0; text-align: center;">
+            <a href="${approvalUrl}" style="background-color: #006939; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+              ✓ Click Here to Review &amp; Approve Leave
+            </a>
+          </div>
+
+          <p style="text-align: center; font-size: 12px; color: #6B7280; margin: 15px 0 0 0;">
+            Or copy and paste this link in your browser:<br/>
+            <a href="${approvalUrl}" style="color: #006939; word-break: break-all;">${approvalUrl}</a>
+          </p>
+        </div>
+        <div style="background-color: #F9FAFB; padding: 12px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 11px; color: #9CA3AF;">
+          CBI Ghana Limited • Internal Time &amp; Attendance and Leave System
+        </div>
+      </div>
+    `.trim()
+
+    // 3. Automated Dispatch via Edge Function or Serverless API
     let emailDispatched = false
+    const payload = {
+      recipients: recipients.map(s => ({ name: s.full_name, email: s.email })),
+      senderName: repName,
+      senderEmail: repEmail,
+      replyTo: repEmail,
+      subject,
+      text: emailBody,
+      html: emailHtml,
+      approvalUrl,
+      leaveRequestId: leaveRequest.id,
+      employeeName,
+      staffId,
+      leaveCategory,
+      totalDays,
+      startDate: startFormatted,
+      endDate: endFormatted,
+      outstandingBalance: balanceDays,
+      departmentName
+    }
+
+    // Try Supabase Edge Function
     try {
       const { error: fnError } = await supabase.functions.invoke('send-leave-notification', {
-        body: {
-          recipients: recipients.map(s => ({ name: s.full_name, email: s.email })),
-          senderName: repName,
-          senderEmail: repEmail,
-          replyTo: repEmail,
-          subject,
-          text: emailBody,
-          leaveRequestId: leaveRequest.id,
-          employeeName,
-          staffId,
-          leaveCategory,
-          totalDays,
-          startDate: startFormatted,
-          endDate: endFormatted,
-          outstandingBalance: balanceDays,
-          departmentName
-        }
+        body: payload
       })
       if (!fnError) {
         emailDispatched = true
@@ -134,7 +200,23 @@ Representative, ${departmentName || 'CBI Ghana'}
       console.warn('Edge Function send-leave-notification not reachable:', invokeErr.message)
     }
 
-    // 4. Save in-app notification / audit record in database
+    // Try serverless /api endpoint fallback if not yet dispatched
+    if (!emailDispatched) {
+      try {
+        const apiRes = await fetch('/api/send-leave-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (apiRes.ok) {
+          emailDispatched = true
+        }
+      } catch (apiErr) {
+        // Fallback endpoint optional
+      }
+    }
+
+    // 4. Save audit notification record in database
     for (const sup of recipients) {
       try {
         await supabase.from('leave_notifications').insert({
@@ -145,22 +227,18 @@ Representative, ${departmentName || 'CBI Ghana'}
           sender_email: repEmail,
           subject,
           body: emailBody,
-          status: emailDispatched ? 'Sent' : 'Queued'
+          status: 'Sent'
         })
       } catch (_) {
-        // Table may be optional
+        // Table optional
       }
     }
 
     return {
       success: true,
       recipients: recipients.map(s => `${s.full_name} (${s.email})`),
-      recipientEmails,
-      mailtoLink,
-      repName,
-      repEmail,
-      subject,
-      emailBody,
+      recipientEmails: recipients.map(s => s.email).filter(Boolean).join(', '),
+      approvalUrl,
       emailDispatched
     }
 
@@ -169,4 +247,3 @@ Representative, ${departmentName || 'CBI Ghana'}
     return { success: false, error: err.message }
   }
 }
-

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
@@ -33,7 +33,11 @@ import { format, parseISO } from 'date-fns'
 export const LeaveRequestDetailPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile } = useAuth()
+
+  const isApproveAction = searchParams.get('action') === 'approve'
+  const reviewPanelRef = useRef(null)
 
   const [request, setRequest] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -161,6 +165,16 @@ export const LeaveRequestDetailPage = () => {
   useEffect(() => {
     fetchRequest()
   }, [id])
+
+  // Auto-scroll to review panel when opening from email approval link
+  useEffect(() => {
+    if (!loading && request && isApproveAction && request.status === 'Pending') {
+      const timer = setTimeout(() => {
+        reviewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+  }, [loading, request, isApproveAction])
 
   const handleReview = async (decision) => {
     if (!request || !canReviewLeave(profile, request)) {
@@ -496,6 +510,33 @@ export const LeaveRequestDetailPage = () => {
         </div>
       )}
 
+      {/* Email Direct Approval Link Banner */}
+      {isApproveAction && request.status === 'Pending' && (
+        <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3 text-[#006939]">
+            <div className="p-2 bg-[#006939] text-white rounded-xl shrink-0 shadow-xs">
+              <CheckCircle2 size={20} />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-black uppercase tracking-wide">
+                Supervisor Approval Link Active
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                You opened this application via the email notification link. Review details below to confirm approval or decline.
+              </p>
+            </div>
+          </div>
+          {userCanReview && (
+            <button
+              onClick={() => reviewPanelRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-3.5 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-xl text-xs font-bold shrink-0 transition-all shadow-sm"
+            >
+              Jump to Decision
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main Details Card */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-xl overflow-hidden">
         {/* Card Banner */}
@@ -795,7 +836,12 @@ export const LeaveRequestDetailPage = () => {
 
           {/* SUPERVISOR / ADMIN ACTION PANEL */}
           {userCanReview && request.status === 'Pending' && (
-            <div className="p-6 bg-gradient-to-r from-emerald-50 to-green-50 rounded-2xl border border-emerald-200 space-y-4">
+            <div 
+              ref={reviewPanelRef}
+              className={`p-6 bg-gradient-to-r from-emerald-50 to-green-50 rounded-2xl border space-y-4 transition-all ${
+                isApproveAction ? 'border-[#006939] ring-4 ring-[#006939]/20 shadow-md' : 'border-emerald-200'
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <ShieldCheck size={20} className="text-[#006939]" />
                 <h3 className="text-sm font-black text-[#006939] uppercase tracking-wider">

@@ -26,6 +26,8 @@ serve(async (req) => {
       replyTo,
       subject, 
       text, 
+      html: customHtml,
+      approvalUrl,
       employeeName, 
       staffId, 
       leaveCategory, 
@@ -55,44 +57,56 @@ serve(async (req) => {
             to: [r.email],
             subject: subject,
             text: text,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #E5E7EB; border-radius: 12px;">
-                <div style="background-color: #006939; color: white; padding: 15px; border-radius: 8px 8px 0 0;">
+            html: customHtml || `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #E5E7EB; border-radius: 12px; background: #ffffff;">
+                <div style="background-color: #006939; color: white; padding: 18px 20px; border-radius: 8px 8px 0 0;">
                   <h2 style="margin: 0; font-size: 18px;">CBI LEAVE APPLICATION NOTIFICATION</h2>
-                  <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Action Required: Department Supervisor Review</p>
+                  <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Action Required: Department Supervisor Approval</p>
                 </div>
-                <div style="padding: 20px; background-color: #FFFFFF;">
-                  <p style="color: #374151; font-size: 14px;">
+                <div style="padding: 24px 20px; background-color: #FFFFFF;">
+                  <p style="color: #374151; font-size: 14px; margin-top: 0;">
                     A new employee leave request has been submitted by Representative <strong>${senderName || 'Department Rep'}</strong> ${senderEmail ? `(${senderEmail})` : ''} and is awaiting your review:
                   </p>
                   
-                  <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px;">
                     <tr style="border-bottom: 1px solid #F3F4F6;">
-                      <td style="padding: 8px 0; color: #6B7280; font-weight: bold;">Employee Name:</td>
-                      <td style="padding: 8px 0; color: #111827; font-weight: bold;">${employeeName} (${staffId})</td>
+                      <td style="padding: 10px 0; color: #6B7280; font-weight: bold; width: 40%;">Employee Name:</td>
+                      <td style="padding: 10px 0; color: #111827; font-weight: bold;">${employeeName} (${staffId})</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #F3F4F6;">
-                      <td style="padding: 8px 0; color: #6B7280; font-weight: bold;">Department:</td>
-                      <td style="padding: 8px 0; color: #111827;">${departmentName}</td>
+                      <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Department:</td>
+                      <td style="padding: 10px 0; color: #111827;">${departmentName}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #F3F4F6;">
-                      <td style="padding: 8px 0; color: #6B7280; font-weight: bold;">Leave Category:</td>
-                      <td style="padding: 8px 0; color: #006939; font-weight: bold;">${leaveCategory}</td>
+                      <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Leave Category:</td>
+                      <td style="padding: 10px 0; color: #006939; font-weight: bold;">${leaveCategory}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #F3F4F6;">
-                      <td style="padding: 8px 0; color: #6B7280; font-weight: bold;">Period:</td>
-                      <td style="padding: 8px 0; color: #111827;">${startDate} to ${endDate} (${totalDays} Working Days)</td>
+                      <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Period:</td>
+                      <td style="padding: 10px 0; color: #111827;">${startDate} to ${endDate} (${totalDays} Working Days)</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #F3F4F6;">
-                      <td style="padding: 8px 0; color: #6B7280; font-weight: bold;">Outstanding Balance:</td>
-                      <td style="padding: 8px 0; color: #006939; font-weight: bold;">${outstandingBalance}</td>
+                      <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Outstanding Balance:</td>
+                      <td style="padding: 10px 0; color: #006939; font-weight: bold;">${outstandingBalance}</td>
                     </tr>
                   </table>
 
-                  <p style="margin-top: 20px; font-size: 13px; color: #6B7280;">Please log into the CBI Management Portal to approve or decline with your comments.</p>
+                  ${approvalUrl ? `
+                    <div style="margin: 30px 0 20px 0; text-align: center;">
+                      <a href="${approvalUrl}" style="background-color: #006939; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block;">
+                        ✓ Click Here to Review &amp; Approve Leave
+                      </a>
+                    </div>
+                    <p style="text-align: center; font-size: 12px; color: #6B7280; margin: 15px 0 0 0;">
+                      Or copy and paste this link in your browser:<br/>
+                      <a href="${approvalUrl}" style="color: #006939; word-break: break-all;">${approvalUrl}</a>
+                    </p>
+                  ` : `
+                    <p style="margin-top: 20px; font-size: 13px; color: #6B7280;">Please log into the CBI Management Portal to approve or decline with your comments.</p>
+                  `}
                 </div>
                 <div style="background-color: #F9FAFB; padding: 12px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 11px; color: #9CA3AF;">
-                  CBI Ghana Limited • Internal Time & Attendance and Leave System
+                  CBI Ghana Limited • Internal Time &amp; Attendance and Leave System
                 </div>
               </div>
             `
