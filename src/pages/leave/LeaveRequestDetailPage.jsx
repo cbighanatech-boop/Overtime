@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin, isRep, isSupervisor } from '../../utils/roleHelpers'
-import { canReviewLeave, canCancelLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown } from '../../utils/leaveHelpers'
+import { canReviewLeave, canCancelLeave, LEAVE_STATUS_COLORS, getEntitlementBreakdown, logLeaveAuditEvent } from '../../utils/leaveHelpers'
 import { 
   ArrowLeft, 
   CalendarDays, 
@@ -193,6 +193,26 @@ export const LeaveRequestDetailPage = () => {
 
       if (error) throw error
 
+      // Log review decision to immutable audit trail
+      await logLeaveAuditEvent({
+        requestId: request.id,
+        action: decision === 'Approved' ? 'Leave Approved' : 'Leave Declined',
+        actionType: decision === 'Approved' ? 'approve' : 'decline',
+        employeeName: request.employee_name,
+        employeeId: request.employee_id,
+        department: request.departments?.name || '',
+        leaveType: request.leave_types?.name || '',
+        totalDays: request.total_days,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        performedBy: profile.full_name,
+        performedByRole: profile.role,
+        status: decision,
+        details: reviewComment.trim()
+          ? `${decision} by ${profile.full_name} (${profile.role}). Note: "${reviewComment.trim()}"`
+          : `${decision} by ${profile.full_name} (${profile.role}) — ${request.total_days} day(s)`
+      })
+
       toast.success(`Leave request ${decision.toLowerCase()} successfully.`)
       fetchRequest()
     } catch (err) {
@@ -218,6 +238,25 @@ export const LeaveRequestDetailPage = () => {
         .eq('id', request.id)
 
       if (error) throw error
+
+      // Log cancellation to immutable audit trail
+      await logLeaveAuditEvent({
+        requestId: request.id,
+        action: 'Leave Cancelled',
+        actionType: 'cancel',
+        employeeName: request.employee_name,
+        employeeId: request.employee_id,
+        department: request.departments?.name || '',
+        leaveType: request.leave_types?.name || '',
+        totalDays: request.total_days,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        performedBy: profile.full_name,
+        performedByRole: profile.role,
+        status: 'Cancelled',
+        details: `Cancelled by ${profile.full_name} (${profile.role})`
+      })
+
       toast.success('Leave request cancelled.')
       fetchRequest()
     } catch (err) {
@@ -268,28 +307,23 @@ export const LeaveRequestDetailPage = () => {
 
     setSavingEdit(true)
     try {
-      // Log the edit action in the audit trail
-      try {
-        await supabase.from('leave_audit_logs').insert({
-          request_id: request.id,
-          action: 'Admin Edit (Approved Request)',
-          action_type: 'edit',
-          employee_name: request.employee_name,
-          employee_id: request.employee_id,
-          department: request.departments?.name || '',
-          leave_type: request.leave_types?.name || '',
-          total_days: request.total_days,
-          start_date: request.start_date,
-          end_date: request.end_date,
-          performed_by: profile.full_name,
-          performed_by_role: profile.role,
-          performed_at: new Date().toISOString(),
-          status: request.status,
-          details: `Admin edited approved request: dates changed from ${request.start_date}–${request.end_date} (${request.total_days}d) to ${editData.start_date}–${editData.end_date} (${editData.total_days}d)`
-        })
-      } catch (auditErr) {
-        console.warn('Could not log audit entry:', auditErr.message)
-      }
+      // 1. Log the edit action in the immutable audit trail
+      await logLeaveAuditEvent({
+        requestId: request.id,
+        action: 'Admin Edit (Approved Leave)',
+        actionType: 'edit',
+        employeeName: request.employee_name,
+        employeeId: request.employee_id,
+        department: request.departments?.name || '',
+        leaveType: request.leave_types?.name || '',
+        totalDays: Number(editData.total_days),
+        startDate: editData.start_date,
+        endDate: editData.end_date,
+        performedBy: profile.full_name,
+        performedByRole: profile.role,
+        status: request.status,
+        details: `Admin edited approved request: dates changed from ${request.start_date}–${request.end_date} (${request.total_days}d) to ${editData.start_date}–${editData.end_date} (${editData.total_days}d). Reason: ${editData.reason || 'N/A'}`
+      })
 
       const { error } = await supabase
         .from('leave_requests')
@@ -327,28 +361,23 @@ export const LeaveRequestDetailPage = () => {
 
     setDeleting(true)
     try {
-      // Log the deletion in audit trail before deleting
-      try {
-        await supabase.from('leave_audit_logs').insert({
-          request_id: request.id,
-          action: 'Admin Delete (Approved Request)',
-          action_type: 'delete',
-          employee_name: request.employee_name,
-          employee_id: request.employee_id,
-          department: request.departments?.name || '',
-          leave_type: request.leave_types?.name || '',
-          total_days: request.total_days,
-          start_date: request.start_date,
-          end_date: request.end_date,
-          performed_by: profile.full_name,
-          performed_by_role: profile.role,
-          performed_at: new Date().toISOString(),
-          status: request.status,
-          details: `Admin deleted ${request.status.toLowerCase()} request for ${request.employee_name}: ${request.total_days} day(s) of ${request.leave_types?.name || 'leave'} (${request.start_date} to ${request.end_date}). Reason: ${request.reason || 'N/A'}`
-        })
-      } catch (auditErr) {
-        console.warn('Could not log audit entry:', auditErr.message)
-      }
+      // 1. Log the deletion in immutable audit trail before deleting
+      await logLeaveAuditEvent({
+        requestId: request.id,
+        action: 'Admin Delete (Approved Leave)',
+        actionType: 'delete',
+        employeeName: request.employee_name,
+        employeeId: request.employee_id,
+        department: request.departments?.name || '',
+        leaveType: request.leave_types?.name || '',
+        totalDays: request.total_days,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        performedBy: profile.full_name,
+        performedByRole: profile.role,
+        status: request.status,
+        details: `Admin deleted ${request.status.toLowerCase()} request for ${request.employee_name}: ${request.total_days} day(s) of ${request.leave_types?.name || 'leave'} (${request.start_date} to ${request.end_date}). Reason: ${request.reason || 'N/A'}`
+      })
 
       const { error } = await supabase
         .from('leave_requests')

@@ -1,3 +1,4 @@
+import { supabase } from '../supabase/client'
 import { isAdmin, isRep, isSupervisor } from './roleHelpers'
 
 /**
@@ -591,6 +592,52 @@ export const calculateLeaveCost = (hourlyRate, days = 0) => {
     hourlyRate: rate,
     dayValue,
     totalCost
+  }
+}
+
+/**
+ * Log an event to the immutable leave_audit_logs table.
+ * Cannot be edited or deleted (table only permits SELECT and INSERT via RLS).
+ *
+ * @param {Object} entry
+ */
+export const logLeaveAuditEvent = async ({
+  requestId = null,
+  action,
+  actionType,
+  employeeName = '',
+  employeeId = '',
+  department = '',
+  leaveType = '',
+  totalDays = 0,
+  startDate = null,
+  endDate = null,
+  performedBy = 'System',
+  performedByRole = '',
+  status = '',
+  details = ''
+}) => {
+  try {
+    const { error } = await supabase.from('leave_audit_logs').insert({
+      request_id: requestId,
+      action,
+      action_type: actionType,
+      employee_name: employeeName,
+      employee_id: employeeId,
+      department,
+      leave_type: leaveType,
+      total_days: Number(totalDays) || 0,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      performed_by: performedBy,
+      performed_by_role: performedByRole,
+      status,
+      details,
+      performed_at: new Date().toISOString()
+    })
+    if (error) console.warn('Audit log insert warning:', error.message)
+  } catch (err) {
+    console.warn('Audit log insert failed:', err)
   }
 }
 

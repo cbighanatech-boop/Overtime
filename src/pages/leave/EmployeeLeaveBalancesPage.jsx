@@ -8,7 +8,8 @@ import {
   getTenureYears, 
   isEligibleForLeave,
   calculateAnnualLeaveEntitlement,
-  LEAVE_YEARS
+  LEAVE_YEARS,
+  logLeaveAuditEvent
 } from '../../utils/leaveHelpers'
 import {
   ArrowLeft,
@@ -307,6 +308,19 @@ export const EmployeeLeaveBalancesPage = () => {
         .eq('id', employee.id)
 
       if (error) throw error
+
+      // Log hourly rate change to immutable audit trail
+      await logLeaveAuditEvent({
+        action: 'Hourly Rate Updated',
+        actionType: 'rate',
+        employeeName: employee.full_name,
+        employeeId: employee.staff_id || employee.id,
+        department: employee.departments?.name || '',
+        performedBy: profile?.full_name || 'Admin',
+        performedByRole: profile?.role || 'admin',
+        status: 'Updated',
+        details: `Admin updated hourly rate for ${employee.full_name} (${employee.staff_id || employee.id}) from GHS ${hourlyRate.toFixed(2)} to GHS ${val.toFixed(2)} (Day Value: GHS ${(val * 8).toFixed(2)})`
+      })
 
       setEmployee(prev => ({
         ...prev,

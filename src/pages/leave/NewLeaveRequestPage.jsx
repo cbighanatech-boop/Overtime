@@ -9,7 +9,8 @@ import {
   getHolidaysInRange, 
   isEligibleForLeave, 
   getEntitlementBreakdown,
-  canUtilizeCasualLeave 
+  canUtilizeCasualLeave,
+  logLeaveAuditEvent
 } from '../../utils/leaveHelpers'
 import { notifySupervisorsOfLeaveRequest } from '../../utils/leaveNotificationService'
 import { 
@@ -354,6 +355,24 @@ export const NewLeaveRequestPage = () => {
       if (error) throw error
 
       const createdRequest = (insertedData && insertedData[0]) || payload
+
+      // Log to immutable leave audit trail
+      await logLeaveAuditEvent({
+        requestId: createdRequest.id || null,
+        action: 'Leave Submitted',
+        actionType: 'submit',
+        employeeName: employeeObj.full_name,
+        employeeId: employeeObj.staff_id || employeeObj.id,
+        department: employeeObj.departments?.name || '',
+        leaveType: selectedType?.name || '',
+        totalDays: totalDays,
+        startDate: startDate,
+        endDate: endDate,
+        performedBy: profile?.full_name || 'Representative',
+        performedByRole: profile?.role || 'rep',
+        status: 'Pending',
+        details: `Applied for ${totalDays} day(s) of ${selectedType?.name || 'leave'} (${startDate} to ${endDate}). Reason: ${reason.trim()}`
+      })
 
       // DISPATCH EMAIL NOTIFICATION TO DEPARTMENT SUPERVISOR
       // Sends: employee name, period, and current outstanding leave balance

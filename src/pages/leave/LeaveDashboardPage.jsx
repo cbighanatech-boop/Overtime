@@ -226,10 +226,14 @@ export const LeaveDashboardPage = () => {
     return startYr === year || endYr === year
   }
 
-  // Profile Map for fast lookup
+  // Profile Map for fast lookup by UUID, Staff ID, or Full Name
   const profileMap = useMemo(() => {
     const map = new Map()
-    eligibleProfiles.forEach(p => map.set(p.id, p))
+    eligibleProfiles.forEach(p => {
+      map.set(p.id, p)
+      if (p.staff_id) map.set(p.staff_id, p)
+      if (p.full_name) map.set(p.full_name.toLowerCase().trim(), p)
+    })
     return map
   }, [eligibleProfiles])
 
@@ -331,14 +335,14 @@ export const LeaveDashboardPage = () => {
     requests.forEach(req => {
       const isAnnual = (req.leave_types?.name || '').trim().toLowerCase() === 'annual leave'
       if (req.status === 'Approved' && isAnnual && isRequestInYear(req, selectedYear)) {
-        const deptKey = req.department_id || 'unassigned'
+        const emp = profileMap.get(req.employee_id) || profileMap.get(req.employee_name?.toLowerCase()?.trim())
+        const deptKey = emp?.department_id || req.department_id || 'unassigned'
         const stat = deptStatsMap.get(deptKey)
         if (stat) {
           const days = Number(req.total_days || 0)
           stat.usedDays += days
 
-          // Determine day value from employee profile
-          const emp = profileMap.get(req.employee_id)
+          // Determine day value from employee profile (Overtime rate)
           const hourlyRate = Number(emp?.hourly_rate || 0)
           const dayValue = hourlyRate * 8
           stat.usedCost += days * dayValue
@@ -412,7 +416,7 @@ export const LeaveDashboardPage = () => {
         const daysInMonth = getWorkingDaysInMonth(req.start_date, req.end_date, req.total_days, selectedYear, idx)
         if (daysInMonth > 0) {
           monthDays += daysInMonth
-          const emp = profileMap.get(req.employee_id)
+          const emp = profileMap.get(req.employee_id) || profileMap.get(req.employee_name?.toLowerCase()?.trim())
           const hourlyRate = Number(emp?.hourly_rate || 0)
           const dayVal = hourlyRate * 8
           monthCost += daysInMonth * dayVal
@@ -705,7 +709,7 @@ export const LeaveDashboardPage = () => {
                   <span>Department Leave Days: Entitled vs. Used</span>
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Comparison of total allocated statutory annual leave days against approved days utilized.
+                  The total leave days of all employees assigned to a department vs. how much of that number has been used so far.
                 </p>
               </div>
               <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg shrink-0 self-start sm:self-auto">
@@ -776,7 +780,7 @@ export const LeaveDashboardPage = () => {
                   <span>Cost of Annual Leaves by Department (GHS)</span>
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Valuation of used leave cost vs. total entitlement liability (Hourly Rate × 8 hrs/day).
+                  The total cost of leave days of all employees assigned to a department vs. how much of that value has been used so far (Overtime rate × 8h).
                 </p>
               </div>
               <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 shrink-0 self-start sm:self-auto">
@@ -857,7 +861,7 @@ export const LeaveDashboardPage = () => {
               </h3>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Monthly distribution of leave days taken and financial value incurred across the 12 calendar months.
+              A trend of how many leave days have been used per month across the 12 calendar months.
             </p>
           </div>
 

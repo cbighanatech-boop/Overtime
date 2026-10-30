@@ -4,7 +4,8 @@ import {
   calculateAnnualLeaveEntitlement, 
   getTenureYears, 
   isEligibleForLeave,
-  normalizeDateString 
+  normalizeDateString,
+  logLeaveAuditEvent
 } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import {
@@ -309,6 +310,17 @@ export const BatchLeaveUploadModal = ({
         .upsert(balanceRecords, { onConflict: 'employee_id,leave_type_id,year' })
 
       if (upsertErr) throw upsertErr
+
+      // Log batch upload to immutable audit trail
+      await logLeaveAuditEvent({
+        action: 'Batch Balances Uploaded',
+        actionType: 'upload',
+        department: 'Multiple Departments',
+        performedBy: 'Administrator',
+        performedByRole: 'admin',
+        status: 'Completed',
+        details: `Batch updated leave balances and DOE profiles for ${validRows.length} employees (Year ${selectedYear})`
+      })
 
       toast.success(`Successfully batch updated leave days for ${validRows.length} employees!`)
       if (onSuccess) await onSuccess()
