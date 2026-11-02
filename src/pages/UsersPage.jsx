@@ -319,6 +319,127 @@ export const UsersPage = () => {
     }
   }
 
+  // Admin can change Shift Category (Straight Day vs Shift vs Standard)
+  const handleCategoryChange = async (user, newCategory) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ category: newCategory || null })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s Shift Category updated to ${newCategory || 'Standard'}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, category: newCategory || null } : u))
+    } catch (err) {
+      console.error("Shift Category update failed:", err.message)
+      toast.error(err.message || "Failed to update Shift Category.")
+    }
+  }
+
+  // Admin can edit full name
+  const handleFullNameEdit = async (user) => {
+    const newName = window.prompt(`Enter new full name for ${user.full_name}:`, user.full_name || '')
+    if (newName === null || !newName.trim() || newName.trim() === user.full_name) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: newName.trim() })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s name updated to ${newName.trim()}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, full_name: newName.trim() } : u))
+    } catch (err) {
+      console.error("Full name update failed:", err.message)
+      toast.error(err.message || "Failed to update name.")
+    }
+  }
+
+  // Admin can edit Staff ID
+  const handleStaffIdEdit = async (user) => {
+    const newStaffId = window.prompt(`Enter new Staff ID for ${user.full_name}:`, user.staff_id || '')
+    if (newStaffId === null || newStaffId.trim() === user.staff_id) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ staff_id: newStaffId.trim() || null })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s Staff ID updated to ${newStaffId.trim() || 'N/A'}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, staff_id: newStaffId.trim() || null } : u))
+    } catch (err) {
+      console.error("Staff ID update failed:", err.message)
+      toast.error(err.message || "Failed to update Staff ID.")
+    }
+  }
+
+  // Admin can change position
+  const handlePositionEdit = async (user) => {
+    const newPos = window.prompt(`Enter new position for ${user.full_name}:`, user.position || '')
+    if (newPos === null || newPos.trim() === user.position) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ position: newPos.trim() || null })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      toast.success(`${user.full_name}'s position updated to ${newPos.trim() || 'N/A'}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, position: newPos.trim() || null } : u))
+    } catch (err) {
+      console.error("Position update failed:", err.message)
+      toast.error(err.message || "Failed to update position.")
+    }
+  }
+
+  // Admin can edit Date of Engagement (DOE)
+  const handleDoeEdit = async (user) => {
+    const current = user.date_of_engagement || ''
+    const newDoe = window.prompt(`Enter Date of Engagement (YYYY-MM-DD) for ${user.full_name}:`, current)
+    if (newDoe === null) return
+    const cleaned = newDoe.trim() || null
+    if (cleaned && !/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+      toast.error('Invalid date format. Please use YYYY-MM-DD (e.g. 2022-03-15).')
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ date_of_engagement: cleaned })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(`${user.full_name}'s DOE updated.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, date_of_engagement: cleaned } : u))
+    } catch (err) {
+      console.error('DOE update failed:', err.message)
+      toast.error(err.message || 'Failed to update Date of Engagement.')
+    }
+  }
+
+  // Admin can change Origin / Native Status
+  const handleNativeStatusChange = async (user, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ native_status: newStatus })
+        .eq('id', user.id)
+      if (error) throw error
+      toast.success(`${user.full_name}'s Origin updated to ${newStatus}.`)
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, native_status: newStatus } : u))
+    } catch (err) {
+      console.error('Native status update failed:', err.message)
+      toast.error(err.message || 'Failed to update origin status.')
+    }
+  }
+
   const getRoleBadge = (role) => {
     switch (role) {
       case 'admin':
@@ -674,39 +795,142 @@ export const UsersPage = () => {
           </div>
         ) : filteredUsers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
+            <table className="w-full text-left border-collapse min-w-[1250px]">
               <thead>
                  <tr className="bg-gray-50/80 text-gray-600 border-b border-gray-200 text-xs font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Full Name</th>
-                  <th className="px-6 py-4">Staff ID</th>
-                  <th className="px-6 py-4">Position</th>
-                  <th className="px-6 py-4">M365 Email</th>
-                  <th className="px-6 py-4">Portal Role</th>
-                  <th className="px-6 py-4">Department</th>
-                  <th className="px-6 py-4">Login Access</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+                  <th className="px-5 py-4">Full Name</th>
+                  <th className="px-4 py-4">Staff ID</th>
+                  <th className="px-4 py-4">Position</th>
+                  <th className="px-5 py-4">Shift Category</th>
+                  <th className="px-4 py-4">DOE</th>
+                  <th className="px-4 py-4">Origin</th>
+                  <th className="px-5 py-4">M365 Email</th>
+                  <th className="px-4 py-4">Portal Role</th>
+                  <th className="px-5 py-4">Department</th>
+                  <th className="px-4 py-4">Login Access</th>
+                  <th className="px-4 py-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
                 {filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50/70 transition-colors">
-                    {/* Name */}
-                    <td className="px-6 py-4 font-semibold text-gray-900">
-                      <span>{user.full_name}</span>
+                    {/* Full Name cell with admin edit */}
+                    <td className="px-5 py-4 font-semibold text-gray-900 group">
+                      <div className="flex items-center gap-2">
+                        <span>{user.full_name}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleFullNameEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Full Name"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Staff ID */}
-                    <td className="px-6 py-4 font-bold text-gray-700 font-mono text-xs">
-                      {user.staff_id || <span className="text-gray-400 italic">N/A</span>}
+                    {/* Staff ID cell with admin edit */}
+                    <td className="px-4 py-4 font-bold text-gray-700 font-mono text-xs group">
+                      <div className="flex items-center gap-1.5">
+                        <span>{user.staff_id || <span className="text-gray-400 font-sans italic">N/A</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleStaffIdEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Staff ID"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Position */}
-                    <td className="px-6 py-4 text-gray-600 text-xs">
-                      {user.position || <span className="text-gray-400 italic">N/A</span>}
+                    {/* Position cell with admin edit */}
+                    <td className="px-4 py-4 text-gray-600 text-xs group">
+                      <div className="flex items-center gap-1.5">
+                        <span>{user.position || <span className="text-gray-400 italic">N/A</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handlePositionEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Position"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Email with direct edit button */}
-                    <td className="px-6 py-4 text-gray-700 font-medium">
+                    {/* Shift Category cell (Straight Day vs Shift vs Standard) */}
+                    <td className="px-5 py-4 font-medium text-gray-600">
+                      {profile?.role === 'admin' ? (
+                        <select
+                          value={user.category || ''}
+                          onChange={e => handleCategoryChange(user, e.target.value)}
+                          className="block w-full min-w-[130px] text-xs py-1.5 px-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
+                        >
+                          <option value="">Standard</option>
+                          <option value="Straight Day">Straight Day</option>
+                          <option value="Shift">Shift</option>
+                        </select>
+                      ) : (
+                        user.category === 'Shift' ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#E1F5FE] text-[#0288D1] border border-[#B3E5FC]">
+                            Shift
+                          </span>
+                        ) : user.category === 'Straight Day' ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFFDE7] text-[#F57F17] border border-[#FFF9C4]">
+                            Straight Day
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            {user.category || 'Standard'}
+                          </span>
+                        )
+                      )}
+                    </td>
+
+                    {/* DOE (Date of Engagement) cell */}
+                    <td className="px-4 py-4 text-xs font-mono text-gray-700 group">
+                      <div className="flex items-center gap-1.5">
+                        <span>{user.date_of_engagement || <span className="text-gray-400 font-sans italic">Not set</span>}</span>
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDoeEdit(user)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#006939]"
+                            title="Edit Date of Engagement (YYYY-MM-DD)"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Origin (Native / Non-Native) cell */}
+                    <td className="px-4 py-4">
+                      {profile?.role === 'admin' ? (
+                        <select
+                          value={user.native_status || 'Native'}
+                          onChange={e => handleNativeStatusChange(user, e.target.value)}
+                          className="block w-full min-w-[110px] text-xs py-1.5 px-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
+                        >
+                          <option value="Native">Native (21d)</option>
+                          <option value="Non-Native">Non-Native (24d)</option>
+                        </select>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          user.native_status === 'Non-Native'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                          {user.native_status || 'Native'}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* M365 Email with direct edit button */}
+                    <td className="px-5 py-4 text-gray-700 font-medium">
                       <div className="flex items-center gap-1.5">
                         <Mail size={13} className="text-gray-400 shrink-0" />
                         <span className={`text-xs font-mono ${user.email ? 'text-gray-800' : 'text-gray-400 italic'}`}>
@@ -725,7 +949,7 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Role badge and change */}
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <div className="flex flex-col gap-1.5 max-w-[130px]">
                         <div>{getRoleBadge(user.role)}</div>
                         {profile?.role === 'admin' && (
@@ -744,12 +968,12 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Department cell */}
-                    <td className="px-6 py-4 font-medium text-gray-600 text-xs">
+                    <td className="px-5 py-4 font-medium text-gray-600 text-xs">
                        {profile?.role === 'admin' ? (
                          <select
                            value={user.department_id || ''}
                            onChange={e => handleDepartmentChange(user, e.target.value)}
-                           className="block w-full text-xs py-1.5 px-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
+                           className="block w-full min-w-[140px] text-xs py-1.5 px-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#006939] font-medium"
                          >
                            <option value="">Unassigned</option>
                            {departments.map(dept => (
@@ -762,7 +986,7 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Access switch status */}
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       {user.is_active ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                           Active
@@ -775,7 +999,7 @@ export const UsersPage = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-4 py-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => handleToggleStatus(user)}
