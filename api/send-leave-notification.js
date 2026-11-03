@@ -120,22 +120,24 @@ export default async function handler(req, res) {
 
     if (smtpUser && smtpPass) {
       try {
+        const isPort465 = Number(smtpPort) === 465
         const transporter = nodemailer.createTransport({
           host: smtpHost,
           port: smtpPort,
-          secure: false, // TLS via STARTTLS
+          secure: isPort465, // false for port 587 (STARTTLS)
+          requireTLS: !isPort465,
           auth: {
             user: smtpUser,
             pass: smtpPass
           },
           tls: {
-            ciphers: 'SSLv3',
+            minVersion: 'TLSv1.2',
             rejectUnauthorized: false
           }
         })
 
-        await transporter.sendMail({
-          from: senderName ? `"${senderName}" <${smtpUser}>` : `"CBI Portal" <${smtpUser}>`,
+        const info = await transporter.sendMail({
+          from: senderName ? `"${senderName} via CBI Portal" <${smtpUser}>` : `"CBI Leave System" <${smtpUser}>`,
           to: recipientEmails.join(', '),
           replyTo: replyTo || senderEmail || undefined,
           subject: subject,
@@ -143,13 +145,20 @@ export default async function handler(req, res) {
           html: html
         })
 
+        console.log('M365 SMTP email dispatched successfully:', info.messageId)
         return res.status(200).json({
           success: true,
           provider: 'Microsoft 365 (SMTP)',
+          messageId: info.messageId,
           recipients: recipientEmails
         })
       } catch (smtpErr) {
         console.error('Microsoft 365 SMTP send error:', smtpErr.message)
+        return res.status(500).json({
+          error: `Microsoft 365 SMTP dispatch failed: ${smtpErr.message}`,
+          code: smtpErr.code,
+          command: smtpErr.command
+        })
       }
     }
 

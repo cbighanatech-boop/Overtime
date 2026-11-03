@@ -86,7 +86,7 @@ export const NewLeaveRequestPage = () => {
             company,
             date_of_engagement,
             native_status,
-            departments (name)
+            departments (id, name)
           `)
           .eq('is_active', true)
           .neq('company', 'Abanach') // Exclude Abanach employees

@@ -18,36 +18,54 @@ export const notifySupervisorsOfLeaveRequest = async ({
   if (!leaveRequest || !employee) return { success: false, error: 'Missing request details' }
 
   try {
-    const departmentId = employee.department_id || leaveRequest.department_id
+    // 1. Resolve Department ID for the Employee
+    let targetDeptId = employee.department_id || employee.departments?.id || leaveRequest.department_id
 
-    // 1. Fetch active supervisors for this department
+    // Fallback: If no department ID found, look up department table by department name
+    const effectiveDeptName = departmentName || employee.departments?.name || ''
+    if (!targetDeptId && effectiveDeptName) {
+      const { data: deptRecord } = await supabase
+        .from('departments')
+        .select('id, name')
+        .ilike('name', effectiveDeptName.trim())
+        .maybeSingle()
+      if (deptRecord?.id) {
+        targetDeptId = deptRecord.id
+      }
+    }
+
+    // 2. Fetch active supervisors for this department
     let supQuery = supabase
       .from('profiles')
       .select('id, full_name, email, role, department_id')
       .eq('is_active', true)
-      .eq('role', 'supervisor')
+      .or('role.ilike.supervisor,role.ilike.sup')
 
-    if (departmentId) {
-      supQuery = supQuery.eq('department_id', departmentId)
+    if (targetDeptId) {
+      supQuery = supQuery.eq('department_id', targetDeptId)
     }
 
     const { data: supervisors, error: supError } = await supQuery
-    if (supError) throw supError
+    if (supError) {
+      console.warn('Supervisor lookup notice:', supError.message)
+    }
 
-    // If no direct supervisor with valid email assigned to this department, look for system Admins
+    // Filter supervisors with a valid email
     let recipients = (supervisors || []).filter(s => s.email && s.email.includes('@'))
+
+    // If no direct supervisor with valid email for this department, look for system Admins
     if (recipients.length === 0) {
       const { data: adminFallbacks } = await supabase
         .from('profiles')
         .select('id, full_name, email, role')
         .eq('is_active', true)
-        .eq('role', 'admin')
+        .or('role.ilike.admin,role.ilike.administrator')
 
       recipients = (adminFallbacks || []).filter(s => s.email && s.email.includes('@'))
     }
 
     if (recipients.length === 0) {
-      console.warn('No supervisor or admin found to notify for department:', departmentName)
+      console.warn('No supervisor or admin found to notify for department:', effectiveDeptName)
       return { success: false, warning: 'No supervisor email found on file' }
     }
 
@@ -70,28 +88,31 @@ export const notifySupervisorsOfLeaveRequest = async ({
     const repName = repProfile?.full_name || 'Department Representative'
     const repEmail = repProfile?.email || ''
 
-    // 2. Direct Click-to-Approve URL for the Supervisor
+    // 3. Direct Click-to-Approve URL for the Supervisor
     const origin = typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
       : 'https://cbi-overtime-app.vercel.app'
 
     const approvalUrl = `${origin}/leave/requests/${leaveRequest.id}?action=approve`
 
-    const subject = `[Action Required: Leave Approval] ${employeeName} (${staffId}) - ${leaveCategory} (${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'})`
+    // Subject clearly features person's name and leave start/end dates
+    const subject = `[Action Required: Leave Approval] ${employeeName} | ${startFormatted} to ${endFormatted} (${leaveCategory})`
 
     // Plain text email body with direct clickable link
     const emailBody = `
 Dear Supervisor,
 
-A new employee leave application has been submitted by Representative ${repName} in the CBI Leave Management App and is awaiting your review and approval.
+A new employee leave application has been processed by Representative ${repName} in the CBI Leave Management App and is awaiting your review and approval.
 
 --------------------------------------------------
-APPLICATION DETAILS:
-• Employee Name: ${employeeName}
+LEAVE APPLICATION DETAILS:
+• Person Applying for Leave: ${employeeName}
 • Staff ID: ${staffId}
-• Department: ${departmentName || 'Department'}
+• Department: ${effectiveDeptName || 'Department'}
 • Leave Category: ${leaveCategory}
-• Leave Period: ${startFormatted} to ${endFormatted} (${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'})
+• Start Date: ${startFormatted}
+• End Date: ${endFormatted}
+• Total Working Days: ${totalDays} Day${Number(totalDays) === 1 ? '' : 's'}
 • Current Outstanding Balance: ${balanceDays}
 • Reason / Purpose: "${leaveRequest.reason || 'None specified'}"
 • Relief Staff: ${leaveRequest.relief_staff_name || 'None specified'}
@@ -109,43 +130,69 @@ ${repName}
 CBI Ghana Limited • Leave & Attendance System
 `.trim()
 
-    // HTML email body with branded CBI Green CTA button
+    // HTML email body with branded CBI Green CTA button and highlighted key fields
     const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #E5E7EB; border-radius: 12px; background: #ffffff;">
-        <div style="background-color: #006939; color: white; padding: 18px 20px; border-radius: 8px 8px 0 0;">
+      <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 20px; border: 1px solid #E5E7EB; border-radius: 12px; background: #ffffff;">
+        <div style="background-color: #006939; color: white; padding: 18px 24px; border-radius: 8px 8px 0 0;">
           <h2 style="margin: 0; font-size: 18px; letter-spacing: 0.5px;">CBI LEAVE APPLICATION NOTIFICATION</h2>
           <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Action Required: Department Supervisor Approval</p>
         </div>
-        <div style="padding: 24px 20px; background-color: #FFFFFF;">
-          <p style="color: #374151; font-size: 14px; margin-top: 0;">
-            A new employee leave application has been submitted by Representative <strong>${repName}</strong> and requires your review and approval:
+        <div style="padding: 24px 22px; background-color: #FFFFFF;">
+          <p style="color: #374151; font-size: 14px; margin-top: 0; line-height: 1.5;">
+            A new employee leave application has been processed by Representative <strong>${repName}</strong> and requires your review and approval:
           </p>
+
+          <!-- Highlight Box: Person & Dates -->
+          <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px; padding: 16px; margin: 18px 0;">
+            <div style="font-size: 16px; font-weight: bold; color: #166534; margin-bottom: 6px;">
+              ${employeeName} <span style="font-size: 13px; font-weight: normal; color: #4B5563;">(${staffId})</span>
+            </div>
+            <div style="font-size: 14px; color: #15803D; font-weight: bold; margin-bottom: 4px;">
+              Leave Period: ${startFormatted} &mdash; ${endFormatted}
+            </div>
+            <div style="font-size: 12px; color: #4B5563;">
+              Duration: <strong>${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'}</strong> &bull; Category: <strong>${leaveCategory}</strong>
+            </div>
+          </div>
           
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px;">
             <tr style="border-bottom: 1px solid #F3F4F6;">
-              <td style="padding: 10px 0; color: #6B7280; font-weight: bold; width: 40%;">Employee Name:</td>
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold; width: 40%;">Person Applying:</td>
               <td style="padding: 10px 0; color: #111827; font-weight: bold;">${employeeName} (${staffId})</td>
             </tr>
             <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Start Date:</td>
+              <td style="padding: 10px 0; color: #111827; font-weight: bold;">${startFormatted}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">End Date:</td>
+              <td style="padding: 10px 0; color: #111827; font-weight: bold;">${endFormatted}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Total Days:</td>
+              <td style="padding: 10px 0; color: #111827; font-weight: bold;">${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #F3F4F6;">
               <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Department:</td>
-              <td style="padding: 10px 0; color: #111827;">${departmentName}</td>
+              <td style="padding: 10px 0; color: #111827;">${effectiveDeptName || 'Department'}</td>
             </tr>
             <tr style="border-bottom: 1px solid #F3F4F6;">
               <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Leave Category:</td>
               <td style="padding: 10px 0; color: #006939; font-weight: bold;">${leaveCategory}</td>
             </tr>
             <tr style="border-bottom: 1px solid #F3F4F6;">
-              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Duration:</td>
-              <td style="padding: 10px 0; color: #111827;">${startFormatted} to ${endFormatted} (<strong>${totalDays} Working Day${Number(totalDays) === 1 ? '' : 's'}</strong>)</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #F3F4F6;">
               <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Outstanding Balance:</td>
               <td style="padding: 10px 0; color: #006939; font-weight: bold;">${balanceDays}</td>
             </tr>
             <tr style="border-bottom: 1px solid #F3F4F6;">
-              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Reason:</td>
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Reason / Purpose:</td>
               <td style="padding: 10px 0; color: #374151;">${leaveRequest.reason || 'None specified'}</td>
             </tr>
+            ${leaveRequest.relief_staff_name ? `
+            <tr style="border-bottom: 1px solid #F3F4F6;">
+              <td style="padding: 10px 0; color: #6B7280; font-weight: bold;">Relief Staff:</td>
+              <td style="padding: 10px 0; color: #374151;">${leaveRequest.relief_staff_name}</td>
+            </tr>` : ''}
           </table>
 
           <!-- Direct Click-to-Approve Button -->
@@ -166,8 +213,10 @@ CBI Ghana Limited • Leave & Attendance System
       </div>
     `.trim()
 
-    // 3. Automated Dispatch via Edge Function or Serverless API
+    // 4. Automated Dispatch:
+    // Primary: Call Vercel Serverless Function /api/send-leave-notification (which holds Microsoft 365 SMTP secrets)
     let emailDispatched = false
+    let dispatchProvider = 'None'
     const payload = {
       recipients: recipients.map(s => ({ name: s.full_name, email: s.email })),
       senderName: repName,
@@ -185,34 +234,41 @@ CBI Ghana Limited • Leave & Attendance System
       startDate: startFormatted,
       endDate: endFormatted,
       outstandingBalance: balanceDays,
-      departmentName
+      departmentName: effectiveDeptName
     }
 
-    // Try Supabase Edge Function
     try {
-      const { error: fnError } = await supabase.functions.invoke('send-leave-notification', {
-        body: payload
+      const apiRes = await fetch('/api/send-leave-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
-      if (!fnError) {
-        emailDispatched = true
+      if (apiRes.ok) {
+        const resData = await apiRes.json()
+        if (resData.success && resData.provider !== 'Queued') {
+          emailDispatched = true
+          dispatchProvider = resData.provider
+        }
+      } else {
+        const errJson = await apiRes.json().catch(() => ({}))
+        console.warn('Vercel /api/send-leave-notification returned:', errJson.error || apiRes.statusText)
       }
-    } catch (invokeErr) {
-      console.warn('Edge Function send-leave-notification not reachable:', invokeErr.message)
+    } catch (apiErr) {
+      console.warn('Vercel API endpoint unreachable:', apiErr.message)
     }
 
-    // Try serverless /api endpoint fallback if not yet dispatched
+    // Secondary fallback: Supabase Edge Function if Vercel serverless wasn't dispatched
     if (!emailDispatched) {
       try {
-        const apiRes = await fetch('/api/send-leave-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('send-leave-notification', {
+          body: payload
         })
-        if (apiRes.ok) {
+        if (!fnError && fnData?.success && fnData.provider !== 'Queued') {
           emailDispatched = true
+          dispatchProvider = fnData.provider
         }
-      } catch (apiErr) {
-        // Fallback endpoint optional
+      } catch (invokeErr) {
+        console.warn('Edge Function send-leave-notification fallback notice:', invokeErr.message)
       }
     }
 
@@ -239,7 +295,8 @@ CBI Ghana Limited • Leave & Attendance System
       recipients: recipients.map(s => `${s.full_name} (${s.email})`),
       recipientEmails: recipients.map(s => s.email).filter(Boolean).join(', '),
       approvalUrl,
-      emailDispatched
+      emailDispatched,
+      provider: dispatchProvider
     }
 
   } catch (err) {
