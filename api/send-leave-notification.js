@@ -9,10 +9,108 @@ import nodemailer from 'nodemailer'
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
+  }
+
+  // ── Diagnostic / Test Action (GET or POST with action=test) ────────────────
+  if (req.method === 'GET' || req.body?.action === 'test' || req.query?.action === 'test') {
+    const testEmail = req.body?.testEmail || req.query?.testEmail || req.query?.to
+    const smtpUser = process.env.M365_SMTP_USER || process.env.SMTP_USER
+    const smtpPass = process.env.M365_SMTP_PASS || process.env.SMTP_PASS
+    const smtpHost = process.env.SMTP_HOST || 'smtp.office365.com'
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10)
+    const graphConfigured = Boolean(process.env.M365_CLIENT_ID && process.env.M365_CLIENT_SECRET)
+
+    const status = {
+      m365_smtp_user: smtpUser ? `${smtpUser.slice(0, 3)}***@${smtpUser.split('@')[1] || ''}` : 'NOT_SET',
+      m365_smtp_pass: smtpPass ? `CONFIGURED (${smtpPass.length} chars)` : 'NOT_SET',
+      smtp_host: smtpHost,
+      smtp_port: smtpPort,
+      graph_api_configured: graphConfigured
+    }
+
+    if (!smtpUser || !smtpPass) {
+      return res.status(200).json({
+        success: false,
+        error: 'M365_SMTP_USER or M365_SMTP_PASS is not set in Vercel Environment Variables. Remember to Redeploy in Vercel after adding variables.',
+        status
+      })
+    }
+
+    try {
+      const isPort465 = Number(smtpPort) === 465
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: isPort465,
+        requireTLS: !isPort465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        },
+        tls: {
+          minVersion: 'TLSv1.2',
+          rejectUnauthorized: false
+        }
+      })
+
+      // Verify connection to Microsoft 365
+      await transporter.verify()
+
+      // If a test recipient email is provided, send a test email
+      let sentMessageId = null
+      if (testEmail && testEmail.includes('@')) {
+        const testInfo = await transporter.sendMail({
+          from: `"CBI Portal Diagnostic" <${smtpUser}>`,
+          to: testEmail,
+          subject: '✓ CBI Leave System: Microsoft 365 Email Test Successful',
+          text: `This is a test notification confirming that Microsoft 365 SMTP relay is properly configured and working on the CBI Leave System.\n\nSent to: ${testEmail}\nTimestamp: ${new Date().toISOString()}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 24px; border: 2px solid #006939; border-radius: 12px; max-width: 500px;">
+              <h2 style="color: #006939; margin-top: 0;">✓ Microsoft 365 Email Connected!</h2>
+              <p style="color: #374151; font-size: 14px;">This confirms that your Microsoft 365 SMTP relay credentials are valid and live emails can now be dispatched to supervisors.</p>
+              <div style="background-color: #F3F4F6; padding: 12px; border-radius: 8px; font-size: 12px; color: #4B5563; margin-top: 16px;">
+                <strong>Sender:</strong> ${smtpUser}<br/>
+                <strong>Recipient:</strong> ${testEmail}<br/>
+                <strong>Relay Host:</strong> ${smtpHost}:${smtpPort}<br/>
+                <strong>Timestamp:</strong> ${new Date().toLocaleString()}
+              </div>
+            </div>
+          `
+        })
+        sentMessageId = testInfo.messageId
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: testEmail
+          ? `Test email successfully sent to ${testEmail} via Microsoft 365!`
+          : `Connected to Microsoft 365 (${smtpHost}:${smtpPort}) successfully!`,
+        sentTo: testEmail || null,
+        messageId: sentMessageId,
+        status
+      })
+    } catch (testErr) {
+      console.error('SMTP test error:', testErr)
+      let hint = 'Please check the SMTP host, port, and credentials in Vercel settings.'
+      if (testErr.message?.includes('535') || testErr.code === 'EAUTH') {
+        hint = 'Authentication failed (535). Common causes:\n1) "Authenticated SMTP" is disabled for this user. In Microsoft 365 Admin Center -> Active Users -> Mail -> Manage email apps -> Check "Authenticated SMTP".\n2) If MFA (Multi-Factor Auth) is enabled, generate an App Password at mysignins.microsoft.com/security-info.'
+      } else if (testErr.code === 'ECONNREFUSED' || testErr.code === 'ETIMEDOUT') {
+        hint = 'Connection to smtp.office365.com timed out. Check SMTP_PORT (should be 587).'
+      }
+
+      return res.status(200).json({
+        success: false,
+        error: testErr.message,
+        code: testErr.code,
+        command: testErr.command,
+        hint,
+        status
+      })
+    }
   }
 
   if (req.method !== 'POST') {

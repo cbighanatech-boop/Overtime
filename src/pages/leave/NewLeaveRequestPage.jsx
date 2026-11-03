@@ -384,14 +384,19 @@ export const NewLeaveRequestPage = () => {
         repProfile: profile
       })
 
-      // AUTOMATED SUPERVISOR NOTIFICATION
-      // The person requesting does not see the email or have an email client open.
-      // They are immediately notified that the email has been sent and redirected.
+      // AUTOMATED SUPERVISOR NOTIFICATION FEEDBACK
       const supervisorInfo = notifyResult?.recipients?.[0] || 'the Department Supervisor'
-      toast.success(
-        `Leave application submitted! Notification email with approval link has been sent to ${supervisorInfo}.`,
-        { duration: 6000 }
-      )
+      if (notifyResult?.emailDispatched) {
+        toast.success(
+          `Leave application submitted! Notification email with approval link sent to ${supervisorInfo}.`,
+          { duration: 6000 }
+        )
+      } else {
+        toast(
+          `Leave submitted. Note: Notification email could not be delivered to ${supervisorInfo} (${notifyResult?.warning || notifyResult?.error || 'Check M365 configuration'}).`,
+          { icon: '⚠️', duration: 8000 }
+        )
+      }
       navigate('/leave/requests')
     } catch (err) {
       console.error('Leave submit error:', err.message)

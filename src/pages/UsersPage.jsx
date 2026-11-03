@@ -25,7 +25,9 @@ import {
   RefreshCw,
   ExternalLink,
   ShieldCheck,
-  Check
+  Check,
+  Send,
+  Wrench
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
@@ -54,6 +56,50 @@ export const UsersPage = () => {
   const [assignUserId, setAssignUserId] = useState('')
   const [assignEmail, setAssignEmail] = useState('')
   const [savingAssignment, setSavingAssignment] = useState(false)
+
+  // M365 Diagnostic Test State
+  const [testModalOpen, setTestModalOpen] = useState(false)
+  const [testEmailInput, setTestEmailInput] = useState('')
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  const handleOpenTestModal = () => {
+    setTestEmailInput(profile?.email || '')
+    setTestResult(null)
+    setTestModalOpen(true)
+  }
+
+  const handleRunEmailTest = async (e) => {
+    if (e) e.preventDefault()
+    setTestingConnection(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/send-leave-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'test',
+          testEmail: testEmailInput.trim()
+        })
+      })
+      const data = await res.json()
+      setTestResult(data)
+      if (data.success) {
+        toast.success(data.message || 'M365 Connection Verified!')
+      } else {
+        toast.error(data.error || 'Connection test failed.')
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        error: `Network error reaching /api/send-leave-notification: ${err.message}`,
+        hint: 'Check if the Vercel deployment has finished and environment variables are active.'
+      })
+      toast.error('Network error reaching email API.')
+    } finally {
+      setTestingConnection(false)
+    }
+  }
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -528,6 +574,14 @@ export const UsersPage = () => {
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenTestModal}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white text-xs font-bold transition-all shadow-xs"
+                  title="Test Microsoft 365 SMTP connectivity and send test email"
+                >
+                  <Send size={13} />
+                  <span>Test M365 Connection</span>
+                </button>
                 <button
                   onClick={fetchUsers}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-all shadow-xs"
@@ -1180,6 +1234,107 @@ export const UsersPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ── TEST M365 EMAIL CONNECTION MODAL ───────────────────────────── */}
+      {testModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-gray-100 overflow-hidden animate-scale-up">
+            <div className="p-5 bg-gradient-to-r from-[#004D2A] to-[#006939] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Send size={20} className="text-[#FDB913]" />
+                <h3 className="font-bold text-base">
+                  Test Microsoft 365 Email Connection
+                </h3>
+              </div>
+              <button
+                onClick={() => setTestModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-white/80"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Send a real diagnostic email via <strong>Microsoft 365 SMTP</strong> using the credentials configured in Vercel (<code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">M365_SMTP_USER</code> &amp; <code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">M365_SMTP_PASS</code>).
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Send Test Email To:
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. your-email@cbi-africa.com"
+                  value={testEmailInput}
+                  onChange={(e) => setTestEmailInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#006939] font-medium"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={handleRunEmailTest}
+                  disabled={testingConnection || !testEmailInput.trim()}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {testingConnection ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  <span>{testingConnection ? 'Testing Connection...' : 'Send Test Email Now'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTestModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              {/* Diagnostic Results Box */}
+              {testResult && (
+                <div className={`mt-4 p-4 rounded-2xl border text-xs space-y-2 ${
+                  testResult.success 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}>
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    {testResult.success ? (
+                      <>
+                        <CheckCircle2 size={16} className="text-emerald-600" />
+                        <span>Success! Email Delivered</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={16} className="text-rose-600" />
+                        <span>Connection Failed</span>
+                      </>
+                    )}
+                  </div>
+
+                  <p className="font-medium">{testResult.message || testResult.error}</p>
+
+                  {testResult.hint && (
+                    <div className="bg-white/80 p-3 rounded-xl border border-rose-200 text-[11px] text-gray-700 space-y-1">
+                      <strong>Troubleshooting Tip:</strong>
+                      <p className="whitespace-pre-line leading-relaxed">{testResult.hint}</p>
+                    </div>
+                  )}
+
+                  {testResult.status && (
+                    <div className="bg-white/60 p-2.5 rounded-xl font-mono text-[10px] space-y-0.5 text-gray-600 border border-gray-200">
+                      <div>User: {testResult.status.m365_smtp_user}</div>
+                      <div>Pass: {testResult.status.m365_smtp_pass}</div>
+                      <div>Relay: {testResult.status.smtp_host}:{testResult.status.smtp_port}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
