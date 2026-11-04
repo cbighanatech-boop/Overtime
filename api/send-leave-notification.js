@@ -1,8 +1,8 @@
 // Vercel Serverless Function: /api/send-leave-notification
-// Sends automated email notification to department supervisor(s) via Microsoft 365
-// Supports both:
-// 1. Microsoft Graph API (OAuth2 Client Credentials - Microsoft recommended)
-// 2. Microsoft 365 SMTP (smtp.office365.com via Nodemailer)
+// Sends automated email notification to department supervisor(s)
+// Supports:
+// 1. Resend.com (Recommended - fast HTTP API, no SMTP/MFA blocks)
+// 2. Microsoft 365 (via Microsoft Graph API or SMTP)
 
 import nodemailer from 'nodemailer'
 
@@ -18,13 +18,83 @@ export default async function handler(req, res) {
   // ── Diagnostic / Test Action (GET or POST with action=test) ────────────────
   if (req.method === 'GET' || req.body?.action === 'test' || req.query?.action === 'test') {
     const testEmail = req.body?.testEmail || req.query?.testEmail || req.query?.to
+    const resendApiKey = process.env.RESEND_API_KEY
     const smtpUser = process.env.M365_SMTP_USER || process.env.SMTP_USER
     const smtpPass = process.env.M365_SMTP_PASS || process.env.SMTP_PASS
     const smtpHost = process.env.SMTP_HOST || 'smtp.office365.com'
     const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10)
     const graphConfigured = Boolean(process.env.M365_CLIENT_ID && process.env.M365_CLIENT_SECRET)
 
+    // Case 1: Testing Resend.com (If RESEND_API_KEY is provided)
+    if (resendApiKey) {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'CBI Leave System <onboarding@resend.dev>'
+      try {
+        const testRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [testEmail || 'delivered@resend.dev'],
+            subject: '✓ CBI Leave System: Resend.com Email Test Successful',
+            text: `Test email sent via Resend API.\nTimestamp: ${new Date().toISOString()}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; padding: 24px; border: 2px solid #006939; border-radius: 12px; max-width: 500px;">
+                <h2 style="color: #006939; margin-top: 0;">✓ Resend.com Connected!</h2>
+                <p style="color: #374151; font-size: 14px;">This confirms that your Resend API Key is working perfectly. Leave approval notifications will now be dispatched instantly via Resend.</p>
+                <div style="background-color: #F3F4F6; padding: 12px; border-radius: 8px; font-size: 12px; color: #4B5563; margin-top: 16px;">
+                  <strong>Provider:</strong> Resend.com (HTTP API)<br/>
+                  <strong>Sender:</strong> ${fromEmail}<br/>
+                  <strong>Recipient:</strong> ${testEmail || 'delivered@resend.dev'}<br/>
+                  <strong>Timestamp:</strong> ${new Date().toLocaleString()}
+                </div>
+              </div>
+            `
+          })
+        })
+
+        const data = await testRes.json()
+        if (testRes.ok) {
+          return res.status(200).json({
+            success: true,
+            provider: 'Resend.com',
+            message: `Test email successfully sent to ${testEmail} via Resend.com!`,
+            messageId: data.id,
+            status: {
+              active_provider: 'Resend.com (API)',
+              resend_api_key: 'CONFIGURED (' + resendApiKey.slice(0, 5) + '***)',
+              resend_from_email: fromEmail
+            }
+          })
+        } else {
+          return res.status(200).json({
+            success: false,
+            provider: 'Resend.com',
+            error: data.message || 'Resend dispatch failed',
+            hint: data.message?.includes('can only send testing emails to your own email address')
+              ? 'In sandbox testing mode (before verifying a domain), Resend only allows sending to the email address of your Resend account. To send to any CBI employee/supervisor, add and verify your domain (e.g. cbi-africa.com or leave.cbi-africa.com) in Resend Domains dashboard.'
+              : 'Please check your RESEND_API_KEY in Vercel settings.',
+            status: {
+              active_provider: 'Resend.com',
+              resend_api_key: 'CONFIGURED'
+            }
+          })
+        }
+      } catch (err) {
+        return res.status(200).json({
+          success: false,
+          provider: 'Resend.com',
+          error: `Resend test network error: ${err.message}`
+        })
+      }
+    }
+
+    // Case 2: Testing Microsoft 365 SMTP
     const status = {
+      active_provider: 'Microsoft 365 (SMTP)',
+      resend_api_key: 'NOT_SET',
       m365_smtp_user: smtpUser ? `${smtpUser.slice(0, 3)}***@${smtpUser.split('@')[1] || ''}` : 'NOT_SET',
       m365_smtp_pass: smtpPass ? `CONFIGURED (${smtpPass.length} chars)` : 'NOT_SET',
       smtp_host: smtpHost,
@@ -35,7 +105,7 @@ export default async function handler(req, res) {
     if (!smtpUser || !smtpPass) {
       return res.status(200).json({
         success: false,
-        error: 'M365_SMTP_USER or M365_SMTP_PASS is not set in Vercel Environment Variables. Remember to Redeploy in Vercel after adding variables.',
+        error: 'Neither RESEND_API_KEY nor M365_SMTP_USER is configured in Vercel Environment Variables. Remember to Redeploy in Vercel after adding variables.',
         status
       })
     }
@@ -86,6 +156,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
+        provider: 'Microsoft 365 (SMTP)',
         message: testEmail
           ? `Test email successfully sent to ${testEmail} via Microsoft 365!`
           : `Connected to Microsoft 365 (${smtpHost}:${smtpPort}) successfully!`,
@@ -97,13 +168,14 @@ export default async function handler(req, res) {
       console.error('SMTP test error:', testErr)
       let hint = 'Please check the SMTP host, port, and credentials in Vercel settings.'
       if (testErr.message?.includes('535') || testErr.code === 'EAUTH') {
-        hint = 'Authentication failed (535). Common causes:\n1) "Authenticated SMTP" is disabled for this user. In Microsoft 365 Admin Center -> Active Users -> Mail -> Manage email apps -> Check "Authenticated SMTP".\n2) If MFA (Multi-Factor Auth) is enabled, generate an App Password at mysignins.microsoft.com/security-info.'
+        hint = 'Authentication failed (535). Common causes:\n1) "Authenticated SMTP" is disabled for this user. In Microsoft 365 Admin Center -> Active Users -> Mail -> Manage email apps -> Check "Authenticated SMTP".\n2) If MFA (Multi-Factor Auth) is enabled, generate an App Password at mysignins.microsoft.com/security-info.\nTip: You can switch to Resend.com by setting RESEND_API_KEY in Vercel to bypass Microsoft SMTP authentication completely.'
       } else if (testErr.code === 'ECONNREFUSED' || testErr.code === 'ETIMEDOUT') {
         hint = 'Connection to smtp.office365.com timed out. Check SMTP_PORT (should be 587).'
       }
 
       return res.status(200).json({
         success: false,
+        provider: 'Microsoft 365 (SMTP)',
         error: testErr.message,
         code: testErr.code,
         command: testErr.command,
@@ -146,8 +218,49 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Valid recipient emails required' })
     }
 
-    // ── Method 1: Microsoft 365 via Microsoft Graph API ─────────────────────
-    // Requires Azure AD App registration: M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET
+    // ── Method 1: Resend.com (Recommended - HTTP API) ────────────────────────
+    const resendApiKey = process.env.RESEND_API_KEY
+    if (resendApiKey) {
+      try {
+        const fromEmail = process.env.RESEND_FROM_EMAIL || 'CBI Leave System <onboarding@resend.dev>'
+        const resendFrom = fromEmail.includes('@resend.dev')
+          ? fromEmail
+          : (senderName ? `"${senderName} via CBI" <${fromEmail.match(/<([^>]+)>/)?.[1] || fromEmail}>` : fromEmail)
+
+        const resendRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: recipientEmails,
+            reply_to: replyTo || senderEmail || undefined,
+            subject: subject,
+            text: text,
+            html: html
+          })
+        })
+
+        const resendData = await resendRes.json()
+        if (resendRes.ok) {
+          console.log('Resend email dispatched successfully:', resendData.id)
+          return res.status(200).json({
+            success: true,
+            provider: 'Resend.com',
+            messageId: resendData.id,
+            recipients: recipientEmails
+          })
+        } else {
+          console.warn('Resend API send failed, trying fallbacks:', resendData.message)
+        }
+      } catch (resendErr) {
+        console.warn('Resend dispatch error, trying fallbacks:', resendErr.message)
+      }
+    }
+
+    // ── Method 2: Microsoft 365 via Microsoft Graph API ─────────────────────
     const tenantId = process.env.M365_TENANT_ID || process.env.AZURE_TENANT_ID
     const clientId = process.env.M365_CLIENT_ID || process.env.AZURE_CLIENT_ID
     const clientSecret = process.env.M365_CLIENT_SECRET || process.env.AZURE_CLIENT_SECRET
@@ -155,7 +268,6 @@ export default async function handler(req, res) {
 
     if (tenantId && clientId && clientSecret) {
       try {
-        // Step A: Request OAuth2 token from Microsoft identity platform
         const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -169,7 +281,6 @@ export default async function handler(req, res) {
 
         const tokenData = await tokenRes.json()
         if (tokenData.access_token) {
-          // Step B: Send mail via Graph API
           const graphRes = await fetch(`https://graph.microsoft.com/v1.0/users/${m365Sender}/sendMail`, {
             method: 'POST',
             headers: {
@@ -209,8 +320,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Method 2: Microsoft 365 via SMTP (smtp.office365.com) ───────────────
-    // Requires M365_SMTP_USER and M365_SMTP_PASS (or App Password)
+    // ── Method 3: Microsoft 365 via SMTP (smtp.office365.com) ───────────────
     const smtpUser = process.env.M365_SMTP_USER || process.env.SMTP_USER
     const smtpPass = process.env.M365_SMTP_PASS || process.env.SMTP_PASS
     const smtpHost = process.env.SMTP_HOST || 'smtp.office365.com'
@@ -222,7 +332,7 @@ export default async function handler(req, res) {
         const transporter = nodemailer.createTransport({
           host: smtpHost,
           port: smtpPort,
-          secure: isPort465, // false for port 587 (STARTTLS)
+          secure: isPort465,
           requireTLS: !isPort465,
           auth: {
             user: smtpUser,
@@ -260,45 +370,12 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Method 3: Resend Fallback ───────────────────────────────────────────
-    const resendApiKey = process.env.RESEND_API_KEY
-    if (resendApiKey) {
-      try {
-        const emailPromises = recipientEmails.map(email => {
-          return fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${resendApiKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              from: senderName ? `${senderName} via CBI Portal <${m365Sender}>` : `CBI Portal <${m365Sender}>`,
-              reply_to: replyTo || senderEmail || undefined,
-              to: [email],
-              subject: subject,
-              text: text,
-              html: html
-            })
-          })
-        })
-
-        await Promise.all(emailPromises)
-        return res.status(200).json({
-          success: true,
-          provider: 'Resend',
-          recipients: recipientEmails
-        })
-      } catch (resendErr) {
-        console.error('Resend dispatch error:', resendErr.message)
-      }
-    }
-
     // ── Fallback: Logged and processed ─────────────────────────────────────
     console.log(`[Leave Email Dispatched] To: ${recipientEmails.join(', ')} | Subject: ${subject} | Link: ${approvalUrl}`)
     return res.status(200).json({
       success: true,
       provider: 'Queued',
-      message: 'Leave notification queued. Configure M365_SMTP_USER & M365_SMTP_PASS or M365_CLIENT_ID for live delivery.',
+      message: 'Leave notification queued. Configure RESEND_API_KEY or M365_SMTP_USER in Vercel for live delivery.',
       recipients: recipientEmails,
       approvalUrl
     })
