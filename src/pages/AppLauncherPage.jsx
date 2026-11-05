@@ -8,7 +8,6 @@ import {
   ArrowRight, 
   LogOut, 
   ShieldCheck, 
-  CheckCircle2, 
   FileText, 
   Users, 
   TrendingUp, 
@@ -297,26 +296,6 @@ export const AppLauncherPage = () => {
             </div>
           </div>
 
-        </div>
-
-        {/* Roles information banner */}
-        <div className="mt-10 sm:mt-12 max-w-4xl mx-auto w-full bg-white/80 backdrop-blur rounded-2xl p-5 border border-gray-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-50 text-[#006939] rounded-xl shrink-0">
-              <CheckCircle2 size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-800">
-                Single Sign-On Activated
-              </p>
-              <p className="text-xs text-gray-500">
-                You are signed in as <strong className="text-gray-700">{profile?.email}</strong>. Seamlessly switch between Overtime and Leave apps anytime from the sidebar.
-              </p>
-            </div>
-          </div>
-          <div className="text-xs text-gray-400 font-medium">
-            CBI Ghana Ltd © {new Date().getFullYear()}
-          </div>
         </div>
       </main>
     </div>
