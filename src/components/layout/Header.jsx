@@ -15,9 +15,12 @@ import {
   ChevronRight,
   ClipboardList,
   Grid,
-  CalendarDays
+  CalendarDays,
+  FileSpreadsheet,
+  Loader2
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { exportOvertimeAppData } from '../../utils/dataExportHelper'
 
 export const Header = ({ setMobileOpen }) => {
   const { profile, logout } = useAuth()
@@ -25,7 +28,17 @@ export const Header = ({ setMobileOpen }) => {
   const location = useLocation()
   const navigate = useNavigate()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [extracting, setExtracting] = useState(false)
   const dropdownRef = useRef(null)
+
+  const handleExtractAll = async () => {
+    setExtracting(true)
+    try {
+      await exportOvertimeAppData()
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -117,7 +130,22 @@ export const Header = ({ setMobileOpen }) => {
 
       {/* User Information & Notification Bell */}
       {profile && (
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Extract All Overtime Data button */}
+          <button
+            onClick={handleExtractAll}
+            disabled={extracting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#004D2A] hover:bg-[#00381E] border border-white/20 text-white text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            title="Extract all Overtime App data points to Excel (.xlsx)"
+          >
+            {extracting ? (
+              <Loader2 size={14} className="animate-spin text-[#FDB913]" />
+            ) : (
+              <FileSpreadsheet size={14} className="text-[#FDB913]" />
+            )}
+            <span className="hidden sm:inline">Extract All Data</span>
+          </button>
+
           {/* Quick link to Leave App */}
           <Link
             to="/leave/dashboard"

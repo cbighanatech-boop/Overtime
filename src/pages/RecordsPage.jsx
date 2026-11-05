@@ -27,6 +27,7 @@ import ReviewModal from '../components/records/ReviewModal'
 import BulkReviewModal from '../components/records/BulkReviewModal'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
+import { exportOvertimeAppData } from '../utils/dataExportHelper'
 
 const ITEMS_PER_PAGE = 20
 
@@ -40,6 +41,7 @@ export const RecordsPage = () => {
   const [departments, setDepartments] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [exportLoading, setExportLoading] = useState(false)
+  const [extractingAll, setExtractingAll] = useState(false)
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false)
 
 
@@ -361,6 +363,16 @@ export const RecordsPage = () => {
     }
   }
 
+  // Extract all data points across the entire Overtime app (unfiltered dataset)
+  const handleExtractAll = async () => {
+    setExtractingAll(true)
+    try {
+      await exportOvertimeAppData()
+    } finally {
+      setExtractingAll(false)
+    }
+  }
+
   // Clear all filters
   const handleClearFilters = () => {
     setSearchText('')
@@ -563,15 +575,27 @@ export const RecordsPage = () => {
         </div>
 
         {/* Export & Clear Filters actions */}
-        <div className="flex justify-end pt-1 gap-3">
+        <div className="flex justify-end pt-1 gap-2.5 sm:gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={handleExtractAll}
+            disabled={extractingAll}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-md text-xs font-bold transition-colors disabled:opacity-50"
+            title="Extract all overtime records, extra hours, employees, and departmental summaries to MS Excel"
+          >
+            <FileSpreadsheet size={14} className="text-[#FDB913]" />
+            <span>{extractingAll ? 'Extracting All...' : 'Extract All Data'}</span>
+          </button>
+
           <button
             type="button"
             onClick={exportRecords}
             disabled={exportLoading}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#006939] hover:bg-[#004D2A] text-white rounded-md text-xs font-bold transition-colors disabled:opacity-50"
+            title="Export currently filtered records to Excel"
           >
             <FileSpreadsheet size={14} />
-            <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
+            <span>{exportLoading ? 'Exporting...' : 'Export Filtered'}</span>
           </button>
           {(searchText || selectedStatus || selectedDept || startDate || endDate || selectedReason || selectedShiftType) && (
             <button

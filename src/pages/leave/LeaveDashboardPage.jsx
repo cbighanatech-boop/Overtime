@@ -31,8 +31,10 @@ import {
   Filter,
   BarChart3,
   Calendar,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from 'lucide-react'
+import { exportLeaveAppData } from '../../utils/dataExportHelper'
 import { 
   ResponsiveContainer, 
   BarChart, 
@@ -66,10 +68,20 @@ export const LeaveDashboardPage = () => {
 
   // Loading & Data States
   const [loading, setLoading] = useState(true)
+  const [extracting, setExtracting] = useState(false)
   const [departments, setDepartments] = useState([])
   const [eligibleProfiles, setEligibleProfiles] = useState([])
   const [leaveTypes, setLeaveTypes] = useState([])
   const [requests, setRequests] = useState([])
+
+  const handleExtractAll = async () => {
+    setExtracting(true)
+    try {
+      await exportLeaveAppData({ currentYear: selectedYear })
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   const fetchDashboardData = async () => {
     if (!profile) return
@@ -562,6 +574,21 @@ export const LeaveDashboardPage = () => {
             title="Refresh Dashboard"
           >
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
+
+          {/* Extract All Leave Data Points Button */}
+          <button
+            onClick={handleExtractAll}
+            disabled={extracting}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-sm transition-all active:scale-[0.98] disabled:opacity-50"
+            title="Extract all leave requests, balances, and departmental summaries to MS Excel"
+          >
+            {extracting ? (
+              <Loader2 size={15} className="animate-spin text-[#FDB913]" />
+            ) : (
+              <FileSpreadsheet size={15} className="text-[#FDB913]" />
+            )}
+            <span>Extract All Data</span>
           </button>
 
           <Link

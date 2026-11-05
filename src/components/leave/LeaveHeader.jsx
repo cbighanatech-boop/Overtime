@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { 
@@ -9,13 +9,26 @@ import {
   UserCheck, 
   Grid,
   CalendarCheck2,
-  Clock
+  Clock,
+  FileSpreadsheet,
+  Loader2
 } from 'lucide-react'
+import { exportLeaveAppData } from '../../utils/dataExportHelper'
 
 export const LeaveHeader = ({ setMobileOpen }) => {
   const { profile, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [extracting, setExtracting] = useState(false)
+
+  const handleExtractAll = async () => {
+    setExtracting(true)
+    try {
+      await exportLeaveAppData()
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   // Derive page title from URL path
   const getPageTitle = () => {
@@ -89,7 +102,22 @@ export const LeaveHeader = ({ setMobileOpen }) => {
 
       {/* User Information & Quick Switch */}
       {profile && (
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Extract All Leave Data button */}
+          <button
+            onClick={handleExtractAll}
+            disabled={extracting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#004D2A] hover:bg-[#00381E] border border-white/20 text-white text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            title="Extract all Leave App data points to Excel (.xlsx)"
+          >
+            {extracting ? (
+              <Loader2 size={14} className="animate-spin text-[#FDB913]" />
+            ) : (
+              <FileSpreadsheet size={14} className="text-[#FDB913]" />
+            )}
+            <span className="hidden sm:inline">Extract All Data</span>
+          </button>
+
           {/* Quick link to Overtime App */}
           <Link
             to="/dashboard"

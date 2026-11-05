@@ -10,6 +10,7 @@ import {
   LEAVE_YEARS
 } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
+import { exportLeaveAppData } from '../../utils/dataExportHelper'
 import { 
   Layers, 
   Search, 
@@ -412,82 +413,15 @@ export const LeaveBalancesPage = () => {
   }
 
   // Admin Export Balances to Excel
-  const handleExportBalances = () => {
+  const handleExportBalances = async () => {
     if (!isAdmin(profile)) {
       toast.error('Only Administrators are authorized to export balance reports.')
       return
     }
 
-    if (!filteredBalances.length) {
-      toast.error('No balance records found to export.')
-      return
-    }
-
     setExporting(true)
     try {
-      const exportRows = filteredBalances.map(row => {
-        const pct = row.entitledDays > 0 ? Math.round((row.usedDays / row.entitledDays) * 100) : 0
-        return {
-          'Year': selectedYear,
-          'Staff ID': row.employeeId,
-          'Employee Name': row.employeeName,
-          'Department': row.departmentName,
-          'Company': row.company,
-          'DOE': row.dateOfEngagement || 'N/A',
-          'Origin': row.nativeStatus,
-          'Tenure (Yrs)': row.tenureYears !== null && row.tenureYears !== undefined ? row.tenureYears : 'N/A',
-          'Leave Category': row.leaveTypeName,
-          'Entitled Days': row.entitledDays,
-          'Prorated': row.isProrated ? `Yes (${row.monthsFromDoeToEndOfYear} mos to year-end)` : 'No',
-          'Accumulated to Date': row.accumulatedDays,
-          'Months Spent': row.monthsSpent,
-          'Bonus Days': row.bonusDays || 0,
-          'Used Days': row.usedDays,
-          'Remaining Days': row.remainingDays,
-          'Hourly Rate (GHS)': row.hourlyRate || 0,
-          'Day Value (GHS)': row.dayValue || 0,
-          'Annual Cost (GHS)': row.isAnnual ? row.entitledCost : 0,
-          'Used Cost (GHS)': row.isAnnual ? row.usedCost : 0,
-          'Remaining Cost (GHS)': row.isAnnual ? row.remainingCost : 0,
-          'Utilization (%)': `${pct}%`,
-          'Breakdown Note': row.breakdownText || ''
-        }
-      })
-
-      const worksheet = XLSX.utils.json_to_sheet(exportRows)
-      worksheet['!cols'] = [
-        { wch: 10 }, // Year
-        { wch: 14 }, // Staff ID
-        { wch: 24 }, // Employee Name
-        { wch: 20 }, // Department
-        { wch: 12 }, // Company
-        { wch: 14 }, // DOE
-        { wch: 14 }, // Origin
-        { wch: 14 }, // Tenure
-        { wch: 20 }, // Leave Category
-        { wch: 14 }, // Entitled Days
-        { wch: 20 }, // Prorated
-        { wch: 18 }, // Accumulated to Date
-        { wch: 14 }, // Months Spent
-        { wch: 12 }, // Bonus Days
-        { wch: 12 }, // Used Days
-        { wch: 16 }, // Remaining Days
-        { wch: 16 }, // Utilization
-        { wch: 36 }  // Breakdown Note
-      ]
-
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, `Balances ${selectedYear}`)
-      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `CBI_Leave_Balances_${selectedYear}_${format(new Date(), 'yyyyMMdd')}.xlsx`
-      a.click()
-      URL.revokeObjectURL(url)
-
-      toast.success(`Exported ${exportRows.length} balance record(s) to Excel!`)
+      await exportLeaveAppData({ currentYear: selectedYear })
     } catch (err) {
       console.error('Balance export error:', err)
       toast.error('Failed to export leave balances to Excel.')
@@ -544,20 +478,20 @@ export const LeaveBalancesPage = () => {
             </button>
           )}
 
-          {/* Admin Excel Export Button */}
+          {/* Admin Excel Extract All Data Button */}
           {isAdmin(profile) && (
             <button
               onClick={handleExportBalances}
               disabled={exporting || loading}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
-              title="Export employee balances to Excel (.xlsx)"
+              title="Extract all leave requests, balances, and departmental summaries to MS Excel (.xlsx)"
             >
               {exporting ? (
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin text-[#FDB913]" />
               ) : (
                 <FileSpreadsheet size={16} className="text-[#FDB913]" />
               )}
-              <span>Export Balances</span>
+              <span>Extract All Data</span>
             </button>
           )}
 

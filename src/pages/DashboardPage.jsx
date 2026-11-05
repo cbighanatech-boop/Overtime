@@ -21,8 +21,10 @@ import {
   ShieldBan,
   Trash2,
   Loader2,
-  Clock4
+  Clock4,
+  FileSpreadsheet
 } from 'lucide-react'
+import { exportOvertimeAppData } from '../utils/dataExportHelper'
 import { 
   AreaChart, 
   Area, 
@@ -147,6 +149,16 @@ const normalizeReason = (reason) => {
 export const DashboardPage = () => {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [extracting, setExtracting] = useState(false)
+
+  const handleExtractAll = async () => {
+    setExtracting(true)
+    try {
+      await exportOvertimeAppData()
+    } finally {
+      setExtracting(false)
+    }
+  }
   const [metrics, setMetrics] = useState({
     totalHours: 0,
     employeeCount: 0,
@@ -663,7 +675,22 @@ export const DashboardPage = () => {
             Here's the summary overview for your portal dashboard.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+          {/* Extract All Overtime Data Button */}
+          <button
+            onClick={handleExtractAll}
+            disabled={extracting}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-sm shadow-sm transition-all active:scale-[0.98] disabled:opacity-50"
+            title="Extract all overtime records, extra hours, employees, and departmental summaries to MS Excel"
+          >
+            {extracting ? (
+              <Loader2 size={16} className="animate-spin text-[#FDB913]" />
+            ) : (
+              <FileSpreadsheet size={16} className="text-[#FDB913]" />
+            )}
+            <span>Extract All Data</span>
+          </button>
+
           {isRep(profile) && (
             <Link
               to="/records/new"
