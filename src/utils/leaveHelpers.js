@@ -232,6 +232,7 @@ export const calculateAnnualLeaveEntitlement = (employee, forYear = new Date().g
 
   // Check Native vs Non-Native
   const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
+  const monthlyRate = isNonNative ? 2.0 : 1.75
   const baseDays = isNonNative ? 24 : 21
 
   const rawDoe = employee.date_of_engagement || employee.doe
@@ -240,10 +241,11 @@ export const calculateAnnualLeaveEntitlement = (employee, forYear = new Date().g
   if (parsedDoe) {
     const { year: doeYear, month: doeMonth } = parsedDoe
 
-    // Case 1: Employee joined in the calculation year -> Prorated to end of year
+    // Case 1: Employee joined in the calculation year (e.g. 2026 or current year) -> Prorated to end of year
+    // Formula: (pro rated number of months to the end of the year) * (1.75 if Native, 2 if Non-Native)
     if (doeYear === forYear) {
       const monthsFromDoeToEndOfYear = Math.max(0, 12 - doeMonth + 1)
-      const proratedDays = (baseDays / 12) * monthsFromDoeToEndOfYear
+      const proratedDays = monthsFromDoeToEndOfYear * monthlyRate
       return Math.round(proratedDays * 100) / 100
     }
 
@@ -318,9 +320,9 @@ export const calculateAccumulatedLeave = (
   if (!employee) return { accumulatedDays: 0, monthsSpent: 0, ratePerMonth: 1.75, isProrated: false, monthsFromDoeToEndOfYear: 12 }
 
   const isNonNative = employee.native_status?.toString().trim().toLowerCase() === 'non-native'
+  const monthlyRate = isNonNative ? 2.0 : 1.75
   const baseDays = isNonNative ? 24 : 21
   const annualEntitled = calculateAnnualLeaveEntitlement(employee, forYear)
-  const monthlyRate = baseDays / 12
 
   const rawDoe = employee.date_of_engagement || employee.doe
   const parsedDoe = parseEngagementDate(rawDoe)

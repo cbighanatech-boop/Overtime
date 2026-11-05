@@ -356,9 +356,9 @@ export const LeaveDashboardPage = () => {
     deptStatsMap.forEach(stat => {
       // Include only departments with headcount or activity
       if (stat.headcount > 0 || stat.usedDays > 0) {
-        stat.entitledDays = Math.round(stat.entitledDays * 10) / 10
-        stat.usedDays = Math.round(stat.usedDays * 10) / 10
-        stat.remainingDays = Math.round(Math.max(0, stat.entitledDays - stat.usedDays) * 10) / 10
+        stat.entitledDays = Math.round(stat.entitledDays * 100) / 100
+        stat.usedDays = Math.round(stat.usedDays * 100) / 100
+        stat.remainingDays = Math.round(Math.max(0, stat.entitledDays - stat.usedDays) * 100) / 100
         stat.entitledCost = Math.round(stat.entitledCost * 100) / 100
         stat.usedCost = Math.round(stat.usedCost * 100) / 100
         stat.remainingCost = Math.round(Math.max(0, stat.entitledCost - stat.usedCost) * 100) / 100
@@ -383,9 +383,9 @@ export const LeaveDashboardPage = () => {
     const activeList = activeDepartmentStats
 
     const totalHeadcount = activeList.reduce((acc, d) => acc + d.headcount, 0)
-    const totalEntitledDays = Math.round(activeList.reduce((acc, d) => acc + d.entitledDays, 0) * 10) / 10
-    const totalUsedDays = Math.round(activeList.reduce((acc, d) => acc + d.usedDays, 0) * 10) / 10
-    const totalRemainingDays = Math.round(Math.max(0, totalEntitledDays - totalUsedDays) * 10) / 10
+    const totalEntitledDays = Math.round(activeList.reduce((acc, d) => acc + d.entitledDays, 0) * 100) / 100
+    const totalUsedDays = Math.round(activeList.reduce((acc, d) => acc + d.usedDays, 0) * 100) / 100
+    const totalRemainingDays = Math.round(Math.max(0, totalEntitledDays - totalUsedDays) * 100) / 100
     const daysUtilizationPct = totalEntitledDays > 0 ? ((totalUsedDays / totalEntitledDays) * 100).toFixed(1) : '0'
 
     const totalEntitledCost = Math.round(activeList.reduce((acc, d) => acc + d.entitledCost, 0) * 100) / 100
