@@ -104,6 +104,7 @@ export const LeaveDashboardPage = () => {
           company,
           departments (id, name)
         `)
+        .eq('is_active', true)
       if (profError) throw profError
 
       const eligible = (profData || []).filter(p => isEligibleForLeave(p))
