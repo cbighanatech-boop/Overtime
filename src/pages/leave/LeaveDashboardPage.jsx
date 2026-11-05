@@ -85,7 +85,7 @@ export const LeaveDashboardPage = () => {
       // 2. Fetch departments
       const { data: deptData } = await supabase
         .from('departments')
-        .select('id, name, code')
+        .select('id, name')
         .order('name')
       setDepartments(deptData || [])
 
@@ -266,7 +266,7 @@ export const LeaveDashboardPage = () => {
       deptStatsMap.set(dept.id, {
         deptId: dept.id,
         deptName: dept.name,
-        deptCode: dept.code || dept.name.substring(0, 3).toUpperCase(),
+        deptCode: dept.name.substring(0, 4).toUpperCase(),
         headcount: 0,
         entitledDays: 0,
         usedDays: 0,
@@ -319,9 +319,9 @@ export const LeaveDashboardPage = () => {
 
       stat.headcount += 1
 
-      // Entitlement for selected year
+      // Entitlement for selected year (calculateAnnualLeaveEntitlement returns number of days)
       const ent = calculateAnnualLeaveEntitlement(emp, selectedYear)
-      const daysEntitled = ent.entitledDays || 0
+      const daysEntitled = typeof ent === 'number' ? ent : (Number(ent?.entitledDays) || 0)
       stat.entitledDays += daysEntitled
 
       // Formula: hourly_rate * 8 = 1 day's value
@@ -355,8 +355,12 @@ export const LeaveDashboardPage = () => {
     deptStatsMap.forEach(stat => {
       // Include only departments with headcount or activity
       if (stat.headcount > 0 || stat.usedDays > 0) {
-        stat.remainingDays = Math.max(0, stat.entitledDays - stat.usedDays)
-        stat.remainingCost = Math.max(0, stat.entitledCost - stat.usedCost)
+        stat.entitledDays = Math.round(stat.entitledDays * 10) / 10
+        stat.usedDays = Math.round(stat.usedDays * 10) / 10
+        stat.remainingDays = Math.round(Math.max(0, stat.entitledDays - stat.usedDays) * 10) / 10
+        stat.entitledCost = Math.round(stat.entitledCost * 100) / 100
+        stat.usedCost = Math.round(stat.usedCost * 100) / 100
+        stat.remainingCost = Math.round(Math.max(0, stat.entitledCost - stat.usedCost) * 100) / 100
         stat.utilizationDaysPct = stat.entitledDays > 0 ? Math.round((stat.usedDays / stat.entitledDays) * 100) : 0
         stat.utilizationCostPct = stat.entitledCost > 0 ? Math.round((stat.usedCost / stat.entitledCost) * 100) : 0
         resultList.push(stat)
@@ -378,14 +382,14 @@ export const LeaveDashboardPage = () => {
     const activeList = activeDepartmentStats
 
     const totalHeadcount = activeList.reduce((acc, d) => acc + d.headcount, 0)
-    const totalEntitledDays = activeList.reduce((acc, d) => acc + d.entitledDays, 0)
-    const totalUsedDays = activeList.reduce((acc, d) => acc + d.usedDays, 0)
-    const totalRemainingDays = Math.max(0, totalEntitledDays - totalUsedDays)
+    const totalEntitledDays = Math.round(activeList.reduce((acc, d) => acc + d.entitledDays, 0) * 10) / 10
+    const totalUsedDays = Math.round(activeList.reduce((acc, d) => acc + d.usedDays, 0) * 10) / 10
+    const totalRemainingDays = Math.round(Math.max(0, totalEntitledDays - totalUsedDays) * 10) / 10
     const daysUtilizationPct = totalEntitledDays > 0 ? ((totalUsedDays / totalEntitledDays) * 100).toFixed(1) : '0'
 
-    const totalEntitledCost = activeList.reduce((acc, d) => acc + d.entitledCost, 0)
-    const totalUsedCost = activeList.reduce((acc, d) => acc + d.usedCost, 0)
-    const totalRemainingCost = Math.max(0, totalEntitledCost - totalUsedCost)
+    const totalEntitledCost = Math.round(activeList.reduce((acc, d) => acc + d.entitledCost, 0) * 100) / 100
+    const totalUsedCost = Math.round(activeList.reduce((acc, d) => acc + d.usedCost, 0) * 100) / 100
+    const totalRemainingCost = Math.round(Math.max(0, totalEntitledCost - totalUsedCost) * 100) / 100
     const costUtilizationPct = totalEntitledCost > 0 ? ((totalUsedCost / totalEntitledCost) * 100).toFixed(1) : '0'
 
     return {

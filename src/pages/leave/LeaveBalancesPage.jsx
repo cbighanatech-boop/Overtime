@@ -33,7 +33,8 @@ import {
   Sparkles,
   UploadCloud,
   Banknote,
-  Coins
+  Coins,
+  Calculator
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -54,6 +55,7 @@ export const LeaveBalancesPage = () => {
   const [departments, setDepartments] = useState([])
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [showBatchModal, setShowBatchModal] = useState(false)
+  const [computing, setComputing] = useState(false)
 
   const fetchBalancesData = async () => {
     if (!profile) return
@@ -320,6 +322,95 @@ export const LeaveBalancesPage = () => {
     return true
   })
 
+  // Admin Recompute & Sync All Balances from DOE
+  const handleComputeAllBalances = async () => {
+    if (!isAdmin(profile)) {
+      toast.error('Only Administrators are authorized to recompute and sync leave balances.')
+      return
+    }
+
+    const annualLt = leaveTypes.find(lt => (lt.name || '').trim().toLowerCase() === 'annual leave')
+    if (!annualLt) {
+      toast.error('Annual Leave type not found.')
+      return
+    }
+
+    setComputing(true)
+    const toastId = toast.loading(`Computing leave balances from DOE for Year ${selectedYear}...`)
+    try {
+      // 1. Fetch all eligible active CBI employees
+      const { data: profData, error: profErr } = await supabase
+        .from('profiles')
+        .select(`
+          id,
+          full_name,
+          staff_id,
+          department_id,
+          company,
+          hourly_rate,
+          date_of_engagement,
+          native_status
+        `)
+        .eq('is_active', true)
+        .neq('company', 'Abanach')
+        .order('full_name')
+
+      if (profErr) throw profErr
+
+      const eligibleEmps = (profData || []).filter(isEligibleForLeave)
+
+      // 2. Fetch approved requests for the selected year
+      const yearStart = `${selectedYear}-01-01`
+      const yearEnd = `${selectedYear}-12-31`
+      const { data: approvedReqs, error: reqErr } = await supabase
+        .from('leave_requests')
+        .select('employee_id, total_days, status, leave_type_id')
+        .eq('status', 'Approved')
+        .eq('leave_type_id', annualLt.id)
+        .gte('start_date', yearStart)
+        .lte('start_date', yearEnd)
+
+      if (reqErr) throw reqErr
+
+      const usedMap = new Map()
+      for (const r of approvedReqs || []) {
+        usedMap.set(r.employee_id, (usedMap.get(r.employee_id) || 0) + Number(r.total_days || 0))
+      }
+
+      // 3. Construct balance records for upsert
+      const balanceRecords = eligibleEmps.map(emp => {
+        const staffId = emp.staff_id || emp.full_name
+        const entitled = calculateAnnualLeaveEntitlement(emp, selectedYear)
+        const used = usedMap.get(staffId) || 0
+        return {
+          employee_id: staffId,
+          employee_name: emp.full_name,
+          department_id: emp.department_id,
+          leave_type_id: annualLt.id,
+          year: selectedYear,
+          entitled_days: entitled,
+          used_days: used,
+          updated_at: new Date().toISOString()
+        }
+      })
+
+      // 4. Upsert into leave_balances table
+      const { error: upsertErr } = await supabase
+        .from('leave_balances')
+        .upsert(balanceRecords, { onConflict: 'employee_id,leave_type_id,year' })
+
+      if (upsertErr) throw upsertErr
+
+      toast.success(`Successfully computed leave balances for ${balanceRecords.length} CBI personnel!`, { id: toastId })
+      await fetchBalancesData()
+    } catch (err) {
+      console.error('Failed to compute leave balances:', err)
+      toast.error('Failed to compute balances: ' + err.message, { id: toastId })
+    } finally {
+      setComputing(false)
+    }
+  }
+
   // Admin Export Balances to Excel
   const handleExportBalances = () => {
     if (!isAdmin(profile)) {
@@ -424,11 +515,28 @@ export const LeaveBalancesPage = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Admin Compute Balances from DOE Button */}
+          {isAdmin(profile) && (
+            <button
+              onClick={handleComputeAllBalances}
+              disabled={computing || loading}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-sm transition-all active:scale-[0.98] disabled:opacity-50"
+              title="Compute and synchronize leave balances from DOE for all eligible CBI employees"
+            >
+              {computing ? (
+                <Loader2 size={16} className="animate-spin text-[#FDB913]" />
+              ) : (
+                <Calculator size={16} className="text-[#FDB913]" />
+              )}
+              <span>Compute Balances</span>
+            </button>
+          )}
+
           {/* Admin Batch Upload Button */}
           {isAdmin(profile) && (
             <button
               onClick={() => setShowBatchModal(true)}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white font-bold text-xs shadow-sm transition-all active:scale-[0.98]"
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-bold text-xs shadow-sm transition-all active:scale-[0.98]"
               title="Batch upload employee current leave days, DOE, and native status"
             >
               <UploadCloud size={16} className="text-[#FDB913]" />
