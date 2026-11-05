@@ -577,10 +577,10 @@ export const UsersPage = () => {
                 <button
                   onClick={handleOpenTestModal}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#006939] hover:bg-[#004D2A] text-white text-xs font-bold transition-all shadow-xs"
-                  title="Test email delivery via Resend.com or Microsoft 365"
+                  title="Test Microsoft 365 SMTP connectivity and send test email"
                 >
                   <Send size={13} />
-                  <span>Test Email Connection</span>
+                  <span>Test MS 365 Connection</span>
                 </button>
                 <button
                   onClick={fetchUsers}
@@ -1237,7 +1237,7 @@ export const UsersPage = () => {
           </div>
         </div>
       )}
-      {/* ── TEST EMAIL CONNECTION MODAL ───────────────────────────── */}
+      {/* ── TEST MS 365 EMAIL CONNECTION MODAL ───────────────────────── */}
       {testModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in font-sans">
           <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-gray-100 overflow-hidden animate-scale-up">
@@ -1245,7 +1245,7 @@ export const UsersPage = () => {
               <div className="flex items-center gap-2">
                 <Send size={20} className="text-[#FDB913]" />
                 <h3 className="font-bold text-base">
-                  Test Email Connection (Resend / M365)
+                  Test Microsoft 365 Email Connection
                 </h3>
               </div>
               <button
@@ -1258,7 +1258,7 @@ export const UsersPage = () => {
 
             <div className="p-6 space-y-4">
               <p className="text-xs text-gray-600 leading-relaxed">
-                Send a real diagnostic email to verify delivery. The system checks for <strong>Resend.com</strong> (<code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">RESEND_API_KEY</code>) first, or falls back to <strong>Microsoft 365 SMTP</strong> (<code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">M365_SMTP_USER</code>).
+                Send a real diagnostic email to verify live delivery via <strong>Microsoft 365 SMTP relay</strong> (<code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">smtp.office365.com:587</code>). The test verifies your <code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">M365_SMTP_USER</code> and <code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px] font-mono">M365_SMTP_PASS</code> directly against Microsoft Exchange.
               </p>
 
               <div>
