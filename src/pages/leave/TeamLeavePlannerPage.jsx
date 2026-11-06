@@ -257,12 +257,17 @@ export const TeamLeavePlannerPage = () => {
     const entitled = calculatePlannerAnnualEntitlement(emp, selectedYear)
     setPopulatingEmployee(emp)
     setPopulateMode('single')
-    setPopulateMonth(8) // default August
+
+    const parsedDoe = parseEngagementDate(emp.date_of_engagement)
+    const isProrated = parsedDoe?.year === selectedYear
+    const defaultMonth = isProrated ? Math.max(parsedDoe.month, 8) : 8
+    setPopulateMonth(defaultMonth)
+
     const half1 = Math.floor(entitled / 2)
-    const half2 = entitled - half1
-    setSplitMonth1(4) // default April
+    const half2 = Number((entitled - half1).toFixed(2))
+    setSplitMonth1(isProrated ? parsedDoe.month : 4)
     setSplitDays1(String(half1))
-    setSplitMonth2(8) // default August
+    setSplitMonth2(isProrated ? 12 : 8)
     setSplitDays2(String(half2))
   }
 
@@ -693,14 +698,19 @@ export const TeamLeavePlannerPage = () => {
                   const entitled = calculatePlannerAnnualEntitlement(emp, selectedYear)
                   const isNonNative = emp.native_status?.toString().trim().toLowerCase() === 'non-native'
                   const baseDays = isNonNative ? 24 : 21
+                  const parsedDoe = parseEngagementDate(emp.date_of_engagement)
+                  const isProrated = parsedDoe?.year === selectedYear
+                  const monthsToEndOfYear = isProrated ? Math.max(0, 12 - parsedDoe.month + 1) : 12
                   const tenureYears = getTenureYears(emp, selectedYear)
                   let bonusDays = 0
-                  if (tenureYears === 3 || tenureYears === 4) bonusDays = 3
-                  else if (tenureYears >= 5) bonusDays = 4
+                  if (!isProrated) {
+                    if (tenureYears === 3 || tenureYears === 4) bonusDays = 3
+                    else if (tenureYears >= 5) bonusDays = 4
+                  }
 
                   const plan = plans[staffId] || { selectedMonths: [], monthAllocations: {}, notes: '', totalPlannedDays: 0 }
-                  const plannedDays = plan.totalPlannedDays || 0
-                  const remaining = entitled - plannedDays
+                  const plannedDays = Number(Number(plan.totalPlannedDays || 0).toFixed(2))
+                  const remaining = Number((entitled - plannedDays).toFixed(2))
 
                   return (
                     <tr key={emp.id} className="hover:bg-emerald-50/20 transition-colors group">
@@ -773,7 +783,14 @@ export const TeamLeavePlannerPage = () => {
                           <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg bg-gray-100 text-gray-800 font-black text-xs">
                             {entitled}d
                           </span>
-                          {bonusDays > 0 ? (
+                          {isProrated ? (
+                            <span 
+                              className="block text-[8.5px] font-bold text-amber-700 mt-0.5 leading-tight" 
+                              title={`Prorated for engagement in ${selectedYear}: ${monthsToEndOfYear} mos to year-end × ${isNonNative ? '2.0d' : '1.75d'}`}
+                            >
+                              Prorated ({monthsToEndOfYear}m)
+                            </span>
+                          ) : bonusDays > 0 ? (
                             <span 
                               className="block text-[8.5px] font-bold text-emerald-700 mt-0.5 leading-tight" 
                               title={`${baseDays}d base + ${bonusDays}d anniversary bonus (${tenureYears} yrs service)`}
@@ -800,7 +817,7 @@ export const TeamLeavePlannerPage = () => {
                                 type="number"
                                 min="0"
                                 max="35"
-                                step="1"
+                                step="any"
                                 value={days !== undefined && days !== null ? days : ''}
                                 onChange={(e) => handleUpdateMonthDays(emp, m.num, e.target.value)}
                                 placeholder="—"
@@ -968,10 +985,16 @@ export const TeamLeavePlannerPage = () => {
               const entitled = calculatePlannerAnnualEntitlement(populatingEmployee, selectedYear)
               const isNonNative = populatingEmployee.native_status?.toString().trim().toLowerCase() === 'non-native'
               const baseDays = isNonNative ? 24 : 21
+              const parsedDoe = parseEngagementDate(populatingEmployee.date_of_engagement)
+              const isProrated = parsedDoe?.year === selectedYear
+              const monthsToEndOfYear = isProrated ? Math.max(0, 12 - parsedDoe.month + 1) : 12
+              const monthlyRate = isNonNative ? 2.0 : 1.75
               const tenure = getTenureYears(populatingEmployee, selectedYear)
               let bonus = 0
-              if (tenure === 3 || tenure === 4) bonus = 3
-              else if (tenure >= 5) bonus = 4
+              if (!isProrated) {
+                if (tenure === 3 || tenure === 4) bonus = 3
+                else if (tenure >= 5) bonus = 4
+              }
 
               return (
                 <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs space-y-1">
@@ -979,18 +1002,26 @@ export const TeamLeavePlannerPage = () => {
                     <span className="font-bold text-gray-700">Entitlement to Populate:</span>
                     <span className="font-black text-base text-[#006939]">{entitled} Days</span>
                   </div>
-                  <p className="text-[11px] text-gray-600">
-                    • <strong>{baseDays} days base</strong> ({isNonNative ? 'Non-Native' : 'Native'})
-                    {bonus > 0 ? (
-                      <span className="text-emerald-700 font-bold block mt-0.5">
-                        • <strong>+{bonus} days anniversary bonus</strong> ({tenure} years of service)
-                      </span>
+                  <div className="text-[11px] text-gray-600 space-y-0.5">
+                    {isProrated ? (
+                      <div className="text-amber-800 font-bold bg-amber-50 p-2 rounded-xl border border-amber-200">
+                        • <strong>Prorated for New Hire:</strong> Joined {populatingEmployee.date_of_engagement} ({monthsToEndOfYear} months to year-end × {monthlyRate}d/mo = {entitled} days)
+                      </div>
                     ) : (
-                      <span className="text-gray-400 block mt-0.5">
-                        • Standard statutory entitlement ({tenure} yrs service)
-                      </span>
+                      <>
+                        <p>• <strong>{baseDays} days base</strong> ({isNonNative ? 'Non-Native' : 'Native'})</p>
+                        {bonus > 0 ? (
+                          <span className="text-emerald-700 font-bold block mt-0.5">
+                            • <strong>+{bonus} days anniversary bonus</strong> ({tenure} years of service)
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 block mt-0.5">
+                            • Standard statutory entitlement ({tenure} yrs service)
+                          </span>
+                        )}
+                      </>
                     )}
-                  </p>
+                  </div>
                 </div>
               )
             })()}
