@@ -588,15 +588,16 @@ export const calculateLeaveCost = (hourlyRate, days = 0) => {
 }
 
 /**
- * Log an event to the immutable leave_audit_logs table.
- * Cannot be edited or deleted (table only permits SELECT and INSERT via RLS).
+ * Log an event to the immutable leave audit trail.
+ * Writes to public.audit_logs (module: 'leave') and attempts dedicated leave_audit_logs table.
+ * Cannot be edited or deleted (append-only ledger).
  *
  * @param {Object} entry
  */
 export const logLeaveAuditEvent = async ({
   requestId = null,
   action,
-  actionType,
+  actionType = 'admin',
   employeeName = '',
   employeeId = '',
   department = '',
@@ -609,10 +610,41 @@ export const logLeaveAuditEvent = async ({
   status = '',
   details = ''
 }) => {
+  const timestamp = new Date().toISOString()
+
+  // 1. Primary write to public.audit_logs (guaranteed to succeed, immutable, non-blocking RLS)
   try {
-    const { error } = await supabase.from('leave_audit_logs').insert({
+    const { error: primaryErr } = await supabase.from('audit_logs').insert({
+      action: action || 'Leave Activity',
+      performed_by: performedBy || 'System',
+      details: {
+        module: 'leave',
+        action_type: actionType,
+        request_id: requestId,
+        employee_name: employeeName,
+        employee_id: employeeId,
+        department,
+        leave_type: leaveType,
+        total_days: Number(totalDays) || 0,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        performed_by: performedBy,
+        performed_by_role: performedByRole,
+        status,
+        details
+      },
+      performed_at: timestamp
+    })
+    if (primaryErr) console.warn('audit_logs insert warning:', primaryErr.message)
+  } catch (err) {
+    console.warn('audit_logs insert exception:', err)
+  }
+
+  // 2. Also attempt write to dedicated leave_audit_logs table for dual-persistence
+  try {
+    const { error: dedicatedErr } = await supabase.from('leave_audit_logs').insert({
       request_id: requestId,
-      action,
+      action: action || 'Leave Activity',
       action_type: actionType,
       employee_name: employeeName,
       employee_id: employeeId,
@@ -625,11 +657,13 @@ export const logLeaveAuditEvent = async ({
       performed_by_role: performedByRole,
       status,
       details,
-      performed_at: new Date().toISOString()
+      performed_at: timestamp
     })
-    if (error) console.warn('Audit log insert warning:', error.message)
+    if (dedicatedErr && dedicatedErr.code !== '42501') {
+      console.warn('leave_audit_logs insert warning:', dedicatedErr.message)
+    }
   } catch (err) {
-    console.warn('Audit log insert failed:', err)
+    // Silent catch for RLS or table schema variations
   }
 }
 

@@ -169,18 +169,75 @@ export const exportLeaveAppData = async ({ currentYear = new Date().getFullYear(
       console.warn('Could not fetch leave_balances:', e)
     }
 
-    // 6. Fetch leave audit logs (if table exists)
-    let leaveAudit = []
+    // 6. Fetch leave audit logs (from universal audit_logs + dedicated table + fallback)
+    const leaveAuditEntries = []
+    const auditDedupKeys = new Set()
+
     try {
-      const { data: auditData } = await supabase
+      const { data: generalAudit } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('details->>module', 'leave')
+        .order('performed_at', { ascending: false })
+        .limit(3000)
+
+      for (const a of generalAudit || []) {
+        const d = a.details || {}
+        const key = d.request_id && d.action_type ? `${d.request_id}-${d.action_type}` : null
+        if (key) auditDedupKeys.add(key)
+        leaveAuditEntries.push({
+          id: a.id,
+          action: a.action,
+          action_type: d.action_type || 'activity',
+          employee_name: d.employee_name || '—',
+          employee_id: d.employee_id || '—',
+          department: d.department || '—',
+          leave_type: d.leave_type || '—',
+          total_days: d.total_days || 0,
+          start_date: d.start_date || '—',
+          end_date: d.end_date || '—',
+          status: d.status || '—',
+          performed_by: a.performed_by || d.performed_by || 'Admin',
+          performed_by_role: d.performed_by_role || 'user',
+          performed_at: a.performed_at,
+          details: d.details || (typeof d === 'string' ? d : '—')
+        })
+      }
+    } catch (_) {}
+
+    try {
+      const { data: dedicatedAudit } = await supabase
         .from('leave_audit_logs')
         .select('*')
         .order('performed_at', { ascending: false })
         .limit(2000)
-      leaveAudit = auditData || []
-    } catch (e) {
-      // Table may be empty or unconfigured
-    }
+
+      for (const a of dedicatedAudit || []) {
+        const key = a.request_id && a.action_type ? `${a.request_id}-${a.action_type}` : null
+        if (!key || !auditDedupKeys.has(key)) {
+          if (key) auditDedupKeys.add(key)
+          leaveAuditEntries.push({
+            id: a.id,
+            action: a.action,
+            action_type: a.action_type || 'admin',
+            employee_name: a.employee_name || '—',
+            employee_id: a.employee_id || '—',
+            department: a.department || '—',
+            leave_type: a.leave_type || '—',
+            total_days: a.total_days || 0,
+            start_date: a.start_date || '—',
+            end_date: a.end_date || '—',
+            status: a.status || '—',
+            performed_by: a.performed_by || 'Admin',
+            performed_by_role: a.performed_by_role || 'admin',
+            performed_at: a.performed_at,
+            details: a.details || '—'
+          })
+        }
+      }
+    } catch (_) {}
+
+    leaveAuditEntries.sort((a, b) => new Date(b.performed_at || 0) - new Date(a.performed_at || 0))
 
     // -------------------------------------------------------------
     // SHEET 1: LEAVE REQUESTS (ALL APPLICATIONS)
@@ -357,12 +414,22 @@ export const exportLeaveAppData = async ({ currentYear = new Date().getFullYear(
     }))
 
     // -------------------------------------------------------------
-    // SHEET 5: LEAVE AUDIT TRAIL
+    // SHEET 5: LEAVE AUDIT TRAIL (IMMUTABLE SYSTEM ACTIVITY LEDGER)
     // -------------------------------------------------------------
-    const auditSheetData = (leaveAudit || []).map(a => ({
+    const auditSheetData = (leaveAuditEntries || []).map(a => ({
       'Audit ID': a.id,
       'Action': a.action,
+      'Action Type': a.action_type,
+      'Employee Name': a.employee_name,
+      'Staff ID': a.employee_id,
+      'Department': a.department,
+      'Leave Type': a.leave_type,
+      'Total Days': a.total_days || 0,
+      'Start Date': a.start_date !== '—' && a.start_date ? formatDate(a.start_date) : '—',
+      'End Date': a.end_date !== '—' && a.end_date ? formatDate(a.end_date) : '—',
+      'Status': a.status,
       'Performed By': a.performed_by,
+      'Role': a.performed_by_role,
       'Date / Time': formatDateTime(a.performed_at),
       'Details': typeof a.details === 'object' ? JSON.stringify(a.details) : String(a.details || '—')
     }))

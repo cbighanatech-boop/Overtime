@@ -71,10 +71,53 @@ export const LeaveAuditTrailPage = () => {
   const fetchAuditLogs = async () => {
     setLoading(true)
     const auditEntries = []
+    const loggedKeys = new Set()
 
     try {
-      // ── Step 1: Query Dedicated Immutable leave_audit_logs Table ───────────
-      let directLogs = []
+      // ── Step 1: Query Universal Immutable audit_logs (details->>module = 'leave') ──
+      try {
+        const { data: generalLogs, error: genErr } = await supabase
+          .from('audit_logs')
+          .select('*')
+          .eq('details->>module', 'leave')
+          .order('performed_at', { ascending: false })
+
+        if (genErr) {
+          console.warn('Warning querying audit_logs:', genErr.message)
+        } else if (generalLogs) {
+          generalLogs.forEach(log => {
+            const det = log.details || {}
+            const actType = det.action_type || 'admin'
+            const reqId = det.request_id || null
+            if (reqId && actType) {
+              loggedKeys.add(`${reqId}-${actType}`)
+            }
+
+            auditEntries.push({
+              id: `audit-${log.id}`,
+              request_id: reqId,
+              action: log.action,
+              action_type: actType,
+              employee_name: det.employee_name || '-',
+              employee_id: det.employee_id || '-',
+              department: det.department || '-',
+              leave_type: det.leave_type || '-',
+              total_days: Number(det.total_days) || 0,
+              start_date: det.start_date || null,
+              end_date: det.end_date || null,
+              performed_by: log.performed_by || det.performed_by || 'Admin',
+              performed_by_role: det.performed_by_role || 'admin',
+              performed_at: log.performed_at,
+              status: det.status || '-',
+              details: det.details || (typeof det === 'string' ? det : '-')
+            })
+          })
+        }
+      } catch (genErr) {
+        console.warn('audit_logs leave query error:', genErr)
+      }
+
+      // ── Step 2: Query Dedicated Immutable leave_audit_logs Table ───────────
       try {
         const { data: logsData, error: logErr } = await supabase
           .from('leave_audit_logs')
@@ -84,41 +127,37 @@ export const LeaveAuditTrailPage = () => {
         if (logErr) {
           console.warn('Warning querying leave_audit_logs:', logErr.message)
         } else if (logsData) {
-          directLogs = logsData.map(log => ({
-            id: `audit-${log.id}`,
-            request_id: log.request_id,
-            action: log.action,
-            action_type: log.action_type || 'admin',
-            employee_name: log.employee_name || '-',
-            employee_id: log.employee_id || '-',
-            department: log.department || '-',
-            leave_type: log.leave_type || '-',
-            total_days: log.total_days || 0,
-            start_date: log.start_date || null,
-            end_date: log.end_date || null,
-            performed_by: log.performed_by || 'Admin',
-            performed_by_role: log.performed_by_role || 'admin',
-            performed_at: log.performed_at,
-            status: log.status || '-',
-            details: log.details || '-'
-          }))
+          logsData.forEach(log => {
+            const key = `${log.request_id}-${log.action_type}`
+            if (!loggedKeys.has(key)) {
+              if (log.request_id && log.action_type) loggedKeys.add(key)
+              auditEntries.push({
+                id: `direct-${log.id}`,
+                request_id: log.request_id,
+                action: log.action,
+                action_type: log.action_type || 'admin',
+                employee_name: log.employee_name || '-',
+                employee_id: log.employee_id || '-',
+                department: log.department || '-',
+                leave_type: log.leave_type || '-',
+                total_days: log.total_days || 0,
+                start_date: log.start_date || null,
+                end_date: log.end_date || null,
+                performed_by: log.performed_by || 'Admin',
+                performed_by_role: log.performed_by_role || 'admin',
+                performed_at: log.performed_at,
+                status: log.status || '-',
+                details: log.details || '-'
+              })
+            }
+          })
         }
       } catch (directErr) {
         console.warn('Direct audit log fetch error:', directErr)
       }
 
-      auditEntries.push(...directLogs)
-
-      // Set of unique keys already covered by direct logs to avoid duplicates
-      const loggedKeys = new Set()
-      directLogs.forEach(l => {
-        if (l.request_id && l.action_type) {
-          loggedKeys.add(`${l.request_id}-${l.action_type}`)
-        }
-      })
-
-      // ── Step 2: Safe Historical Fallback from leave_requests ────────────────
-      // Synthesize events for requests created before the audit logs table existed
+      // ── Step 3: Safe Historical Fallback from leave_requests ────────────────
+      // Synthesize any historical requests not yet captured in audit_logs
       try {
         const { data: requests, error: reqErr } = await supabase
           .from('leave_requests')
@@ -139,7 +178,6 @@ export const LeaveAuditTrailPage = () => {
             reviewed_at,
             review_comment,
             updated_at,
-            created_at,
             departments (name),
             leave_types (name)
           `)
@@ -168,7 +206,7 @@ export const LeaveAuditTrailPage = () => {
               auditEntries.push({
                 id: `${req.id}-submit`,
                 request_id: req.id,
-                action: 'Leave Submitted',
+                action: 'Leave Application Submitted',
                 action_type: 'submit',
                 employee_name: req.employee_name,
                 employee_id: req.employee_id,
@@ -315,6 +353,12 @@ export const LeaveAuditTrailPage = () => {
         return { icon: DollarSign, bg: 'bg-indigo-100', text: 'text-indigo-800', dot: 'bg-indigo-500' }
       case 'upload':
         return { icon: UploadCloud, bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' }
+      case 'recalculate':
+        return { icon: RefreshCw, bg: 'bg-teal-100', text: 'text-teal-800', dot: 'bg-teal-500' }
+      case 'planner':
+        return { icon: Calendar, bg: 'bg-sky-100', text: 'text-sky-800', dot: 'bg-sky-500' }
+      case 'types':
+        return { icon: FileText, bg: 'bg-violet-100', text: 'text-violet-800', dot: 'bg-violet-500' }
       default:
         return { icon: ShieldCheck, bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' }
     }
@@ -468,8 +512,10 @@ export const LeaveAuditTrailPage = () => {
             <option value="cancel">Cancellations</option>
             <option value="edit">Admin Edits</option>
             <option value="delete">Admin Deletions</option>
+            <option value="recalculate">Balance Recalculations</option>
+            <option value="upload">Batch Balances Upload</option>
+            <option value="planner">Leave Planner Updates</option>
             <option value="rate">Hourly Rate Updates</option>
-            <option value="upload">Batch Uploads</option>
           </select>
 
           {/* Date Range Filter */}

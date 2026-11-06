@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin } from '../../utils/roleHelpers'
-import { DEFAULT_LEAVE_TYPES } from '../../utils/leaveHelpers'
+import { DEFAULT_LEAVE_TYPES, logLeaveAuditEvent } from '../../utils/leaveHelpers'
 import { 
   Plus, 
   Edit3, 
@@ -140,6 +140,16 @@ export const LeaveTypesPage = () => {
           .eq('id', editingType.id)
 
         if (error) throw error
+
+        await logLeaveAuditEvent({
+          action: 'Leave Type Updated',
+          actionType: 'types',
+          performedBy: profile?.full_name || profile?.email || 'Administrator',
+          performedByRole: profile?.role || 'admin',
+          status: 'Updated',
+          details: `Updated leave type "${name.trim()}" (Default: ${daysNum} days, Active: ${isActive}).`
+        })
+
         toast.success(`Updated "${name}" successfully.`)
       } else {
         // Create new
@@ -153,6 +163,16 @@ export const LeaveTypesPage = () => {
           })
 
         if (error) throw error
+
+        await logLeaveAuditEvent({
+          action: 'Leave Type Created',
+          actionType: 'types',
+          performedBy: profile?.full_name || profile?.email || 'Administrator',
+          performedByRole: profile?.role || 'admin',
+          status: 'Created',
+          details: `Created new leave type "${name.trim()}" (Default: ${daysNum} days, Active: ${isActive}).`
+        })
+
         toast.success(`Created "${name}" with ${daysNum} days.`)
       }
 
@@ -207,6 +227,16 @@ export const LeaveTypesPage = () => {
         .eq('id', deleteConfirmType.id)
 
       if (error) throw error
+
+      await logLeaveAuditEvent({
+        action: 'Leave Type Deleted',
+        actionType: 'types',
+        performedBy: profile?.full_name || profile?.email || 'Administrator',
+        performedByRole: profile?.role || 'admin',
+        status: 'Deleted',
+        details: `Deleted leave type "${deleteConfirmType.name}".`
+      })
+
       toast.success(`Deleted leave type "${deleteConfirmType.name}".`)
       setDeleteConfirmType(null)
       fetchLeaveTypes()

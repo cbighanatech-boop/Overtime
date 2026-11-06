@@ -7,7 +7,8 @@ import {
   isEligibleForLeave, 
   getEntitlementBreakdown,
   calculateAnnualLeaveEntitlement,
-  LEAVE_YEARS
+  LEAVE_YEARS,
+  logLeaveAuditEvent
 } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { exportLeaveAppData } from '../../utils/dataExportHelper'
@@ -401,6 +402,16 @@ export const LeaveBalancesPage = () => {
         .upsert(balanceRecords, { onConflict: 'employee_id,leave_type_id,year' })
 
       if (upsertErr) throw upsertErr
+
+      // Log recalculation activity to immutable audit trail
+      await logLeaveAuditEvent({
+        action: 'Leave Balances Recomputed',
+        actionType: 'recalculate',
+        performedBy: profile?.full_name || profile?.email || 'Administrator',
+        performedByRole: profile?.role || 'admin',
+        status: 'Completed',
+        details: `Recomputed leave entitlements & balances from DOE and Native Status for ${balanceRecords.length} CBI personnel (Year ${selectedYear}).`
+      })
 
       toast.success(`Successfully computed leave balances for ${balanceRecords.length} CBI personnel!`, { id: toastId })
       await fetchBalancesData()

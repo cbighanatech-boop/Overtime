@@ -8,7 +8,8 @@ import {
   calculatePlannerAnnualEntitlement, 
   getTenureYears, 
   parseEngagementDate,
-  LEAVE_YEARS 
+  LEAVE_YEARS,
+  logLeaveAuditEvent
 } from '../../utils/leaveHelpers'
 import * as XLSX from 'xlsx'
 import { 
@@ -352,6 +353,16 @@ export const TeamLeavePlannerPage = () => {
       } else {
         toast.success(`Annual leave plan saved successfully to database for ${recordsToUpsert.length} employees!`)
       }
+
+      // Log plan update to immutable audit trail
+      await logLeaveAuditEvent({
+        action: 'Leave Planner Saved',
+        actionType: 'planner',
+        performedBy: profile?.full_name || profile?.email || 'Planner',
+        performedByRole: profile?.role || 'user',
+        status: 'Saved',
+        details: `Saved annual leave plan allocations for ${recordsToUpsert.length} personnel for Year ${selectedYear}.`
+      })
 
       setHasUnsavedChanges(false)
     } catch (err) {
